@@ -2,7 +2,7 @@
 
 Application web mobile (PWA) pour gérer le stock alimentaire de la maison : on scanne les codes-barres ou QR codes des produits, on suit les dates de péremption et la liste de courses se remplit toute seule.
 
-**Ouvrir l'app :** https://vdltch.github.io/garde-manger/
+**Ouvrir l'app :** https://stock.quipaie.com/ (servie par PocketBase) — miroir : https://vdltch.github.io/garde-manger/
 
 ## Fonctionnalités
 
@@ -19,6 +19,8 @@ Application web mobile (PWA) pour gérer le stock alimentaire de la maison : on 
 
 - **iPhone (Safari)** : ouvrir l'URL → bouton Partager → « Sur l'écran d'accueil ».
 - **Android (Chrome)** : ouvrir l'URL → menu ⋮ → « Installer l'application ».
+
+Sur téléphone, si l'app est ouverte dans un onglet, un écran explique comment l'installer selon le système et le navigateur (Safari, Chrome, Firefox, Edge, Samsung Internet, navigateurs intégrés d'Instagram/Facebook…). Sur Android, un bouton « Installer l'app » lance l'installation directement quand le navigateur le permet.
 
 La caméra demande une autorisation au premier scan. Si elle est refusée, on peut aussi prendre le code en photo ou le taper.
 
@@ -41,6 +43,14 @@ ADMIN_EMAIL=vous@exemple.fr ADMIN_PASSWORD='un-mot-de-passe-solide' bash install
 ```
 
 Le script installe la dernière version de PocketBase dans `/opt/pocketbase`, crée le service systemd `pocketbase` (port 8090), applique la migration `pb_migrations/` (collection `stock`, accès réservé aux comptes connectés, inscription publique désactivée) et crée le compte administrateur.
+
+Le même script publie l'app dans `/opt/pocketbase/pb_public` : PocketBase sert l'app à la racine (`/`), l'API sur `/api/` et le tableau de bord sur `/_/`, le tout sur une seule adresse.
+
+Pour mettre l'app à jour après un changement dans le repo :
+
+```bash
+cd ~/garde-manger/server && bash deploy-app.sh
+```
 
 ### 2. Créer les comptes du foyer
 

@@ -47,7 +47,7 @@ Wants=network-online.target
 User=pocketbase
 Group=pocketbase
 WorkingDirectory=$PB_DIR
-ExecStart=$PB_DIR/pocketbase serve --http=0.0.0.0:$PB_PORT --dir=$PB_DIR/pb_data --migrationsDir=$PB_DIR/pb_migrations
+ExecStart=$PB_DIR/pocketbase serve --http=0.0.0.0:$PB_PORT --dir=$PB_DIR/pb_data --migrationsDir=$PB_DIR/pb_migrations --publicDir=$PB_DIR/pb_public
 Restart=on-failure
 RestartSec=5
 LimitNOFILE=4096
@@ -67,14 +67,19 @@ echo "→ Compte administrateur"
 sudo -u pocketbase "$PB_DIR/pocketbase" superuser upsert "$ADMIN_EMAIL" "$ADMIN_PASSWORD" --dir="$PB_DIR/pb_data" 2>/dev/null \
   || runuser -u pocketbase -- "$PB_DIR/pocketbase" superuser upsert "$ADMIN_EMAIL" "$ADMIN_PASSWORD" --dir="$PB_DIR/pb_data"
 
+echo "→ Publication de l'app"
+bash "$HERE/deploy-app.sh"
+
 IP=$(hostname -I | awk '{print $1}')
 cat <<DONE
 
 ✔ PocketBase tourne sur http://$IP:$PB_PORT
+  App :             http://$IP:$PB_PORT/
   Tableau de bord : http://$IP:$PB_PORT/_/  (connexion avec ADMIN_EMAIL)
 
 Étapes suivantes :
   1. Dans le tableau de bord → Collections → users → « New record » : créez un compte par personne du foyer.
   2. Exposez le serveur en HTTPS (Cloudflare Tunnel ou reverse proxy), voir le README.
-  3. Dans l'app : bouton nuage → adresse HTTPS du serveur + e-mail/mot de passe du compte.
+  3. Ouvrez l'adresse HTTPS sur le téléphone, installez l'app, puis bouton nuage → e-mail/mot de passe.
+  Mise à jour de l'app plus tard : bash deploy-app.sh
 DONE

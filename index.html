@@ -231,6 +231,40 @@ h1{font-family:var(--f-display);font-weight:800;font-size:clamp(1.75rem,8vw,2.3r
 @keyframes toast{from{transform:translate(-50%,30px) scale(.9);opacity:0}}
 .toast button{border:0;background:color-mix(in srgb,var(--bg) 16%,transparent);color:var(--bg);border-radius:10px;padding:6px 10px;font-weight:700;font-size:.8rem}
 
+/* Install gate */
+html.gated,html.gated body{overflow:hidden}
+#gate{position:fixed;inset:0;z-index:100;background:var(--bg);overflow-y:auto;display:flex;justify-content:center;
+  padding-top:calc(28px + env(safe-area-inset-top,0px));padding-bottom:calc(40px + env(safe-area-inset-bottom,0px));padding-left:max(22px,env(safe-area-inset-left,0px));padding-right:max(22px,env(safe-area-inset-right,0px))}
+#gate::before{content:"";position:fixed;inset:auto -30% 55% -30%;height:70%;background:radial-gradient(closest-side,color-mix(in srgb,var(--laser) 16%,transparent),transparent);pointer-events:none}
+.g-in{position:relative;width:100%;max-width:430px;display:flex;flex-direction:column;align-items:flex-start;gap:14px;animation:rise .7s var(--spring) both}
+.g-icon{width:84px;height:84px;border-radius:22px;box-shadow:0 18px 40px -14px var(--laser-glow)}
+.g-chip{font-family:var(--f-mono);font-size:.64rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);border:1.5px solid var(--line);border-radius:999px;padding:4px 10px;margin-top:4px}
+#gate h1{font-size:clamp(1.7rem,8.5vw,2.3rem);margin:0}
+.g-lead{margin:0;color:var(--muted);font-size:1rem;max-width:34ch}
+.g-steps{list-style:none;counter-reset:s;margin:8px 0 0;padding:0;display:grid;gap:10px;width:100%}
+.g-steps li{counter-increment:s;display:grid;grid-template-columns:34px 1fr;gap:12px;align-items:start;background:var(--surface);border-radius:18px;padding:14px;font-size:.97rem;line-height:1.55;animation:rise .6s var(--spring) both}
+.g-steps li:nth-child(2){animation-delay:.08s}.g-steps li:nth-child(3){animation-delay:.16s}.g-steps li:nth-child(4){animation-delay:.24s}
+.g-steps li::before{content:counter(s);width:34px;height:34px;border-radius:12px;background:var(--ink);color:var(--bg);display:grid;place-items:center;font-family:var(--f-display);font-weight:700;font-size:.9rem}
+.g-steps li b{font-weight:700}
+.g-steps li>span{min-width:0;padding-top:5px}
+.k{display:inline-flex;align-items:center;gap:5px;vertical-align:middle;background:var(--surface-2);border:1px solid var(--line);border-radius:9px;padding:2px 7px;margin:1px 0;white-space:nowrap}
+.k svg{width:17px;height:17px;flex:none}
+.k b{font-weight:600;font-size:.9em}
+.g-cta{width:100%;border:0;border-radius:18px;background:var(--laser);color:#fff;font-weight:700;font-size:1.05rem;padding:17px;box-shadow:0 14px 30px -10px var(--laser-glow);transition:transform .35s var(--spring)}
+.g-cta:active{transform:scale(.96)}
+.g-or{margin:0;font-size:.82rem;color:var(--muted)}
+.g-copy{border:1.5px solid var(--line);background:var(--surface);border-radius:14px;padding:12px 16px;font-weight:600}
+.g-skip{border:0;background:none;color:var(--muted);font-size:.85rem;text-decoration:underline;text-underline-offset:3px;padding:8px 0;margin-top:6px}
+.g-arrow{position:fixed;z-index:101;width:52px;height:52px;border-radius:50%;background:var(--laser);color:#fff;display:grid;place-items:center;box-shadow:0 10px 26px -6px var(--laser-glow);pointer-events:none}
+.g-arrow svg{width:26px;height:26px}
+.g-top-right{top:calc(10px + env(safe-area-inset-top,0px));right:max(14px,env(safe-area-inset-right,0px));animation:nudge-up 1.4s ease-in-out infinite}
+.g-bottom{bottom:calc(14px + env(safe-area-inset-bottom,0px));left:calc(50% - 26px);animation:nudge-down 1.4s ease-in-out infinite}
+.g-bottom svg,.g-bottom-right svg{transform:rotate(180deg)}
+.g-bottom-right{bottom:calc(14px + env(safe-area-inset-bottom,0px));right:max(14px,env(safe-area-inset-right,0px));animation:nudge-down 1.4s ease-in-out infinite}
+@keyframes nudge-up{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+@keyframes nudge-down{0%,100%{transform:translateY(0)}50%{transform:translateY(8px)}}
+.g-in:has(.g-steps){padding-bottom:70px}
+
 ::view-transition-group(*){animation-duration:.42s;animation-timing-function:var(--spring)}
 ::view-transition-old(root),::view-transition-new(root){animation-duration:.25s}
 
@@ -240,6 +274,134 @@ h1{font-family:var(--f-display);font-weight:800;font-size:clamp(1.75rem,8vw,2.3r
 </head>
 <body>
 <div id="app"></div>
+
+<div id="gate" hidden></div>
+<script>
+/* Install gate: on a phone, Garde-manger is meant to run as an installed web app.
+   When it is opened in a browser tab, show how to install it for this exact OS + browser.
+   Plain DOM on purpose, so it works even before the app's libraries have loaded. */
+(function(){
+  var gate=document.getElementById("gate");
+  var bip=null, installed=false;
+  addEventListener("beforeinstallprompt",function(e){ e.preventDefault(); bip=e; render(); });
+  addEventListener("appinstalled",function(){ installed=true; bip=null; render(); });
+
+  var standalone = matchMedia("(display-mode: standalone)").matches || matchMedia("(display-mode: fullscreen)").matches || navigator.standalone===true;
+  var framed=false; try{ framed = window.top!==window; }catch(e){ framed=true; }
+  var ua=navigator.userAgent;
+  var ios=/iPad|iPhone|iPod/.test(ua) || (navigator.platform==="MacIntel" && navigator.maxTouchPoints>1);
+  var android=/Android/i.test(ua);
+  var skipped=false; try{ skipped = sessionStorage.getItem("gm-skip-install")==="1"; }catch(e){}
+  if(standalone || framed || skipped || !(ios||android)) return;
+
+  var inApp=/FBAN|FBAV|FB_IAB|Instagram|LinkedInApp|Snapchat|Line\/|Twitter|TikTok|musical_ly|GSA\//i.test(ua) || (android && /; wv\)/.test(ua));
+  var browser = ios ? (/CriOS/.test(ua)?"chrome":/FxiOS/.test(ua)?"firefox":/EdgiOS/.test(ua)?"edge":/OPiOS|OPT\//.test(ua)?"opera":"safari")
+                    : (/SamsungBrowser/.test(ua)?"samsung":/Firefox/.test(ua)?"firefox":/EdgA/.test(ua)?"edge":/OPR|Opera/.test(ua)?"opera":"chrome");
+  if(inApp) browser="inapp";
+
+  var G={
+    share:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M8 7l4-4 4 4"/><path d="M7 10H5v11h14V10h-2"/></svg>',
+    addHome:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M12 8.5v7M8.5 12h7"/></svg>',
+    dots:'<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>',
+    hdots:'<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>',
+    burger:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>',
+    phone:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="6" y="2.5" width="12" height="19" rx="3"/><path d="M11 18.5h2"/></svg>',
+    compass:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></svg>'
+  };
+  var k=function(icon,label){ return '<span class="k">'+(icon?G[icon]:"")+(label?'<b>'+label+'</b>':"")+'</span>'; };
+
+  // steps + where the browser's button sits on screen (for the pointing arrow)
+  var guides={
+    ios:{
+      safari:{name:"Safari · iPhone", arrow:"bottom", steps:[
+        "Touchez "+k("share")+" <b>Partager</b> dans la barre du bas. Sur iOS 26, il est dans le menu "+k("hdots")+".",
+        "Faites défiler et touchez "+k("addHome","Sur l'écran d'accueil")+".",
+        "Laissez <b>Ouvrir comme app web</b> activé, puis touchez <b>Ajouter</b>.",
+        "Ouvrez <b>Garde-manger</b> depuis votre écran d'accueil."]},
+      chrome:{name:"Chrome · iPhone", arrow:"top-right", steps:[
+        "Touchez "+k("share")+" <b>Partager</b>, à droite de la barre d'adresse.",
+        "Touchez "+k("addHome","Ajouter à l'écran d'accueil")+" (sous <b>Plus</b> s'il n'apparaît pas).",
+        "Touchez <b>Ajouter</b>.",
+        "Ouvrez <b>Garde-manger</b> depuis votre écran d'accueil."]},
+      firefox:{name:"Firefox · iPhone", arrow:"bottom-right", steps:[
+        "Touchez le menu "+k("burger")+" en bas à droite, puis "+k("share","Partager")+".",
+        "Touchez "+k("addHome","Sur l'écran d'accueil")+", puis <b>Ajouter</b>.",
+        "Ouvrez <b>Garde-manger</b> depuis votre écran d'accueil."]},
+      edge:{name:"Edge · iPhone", arrow:"bottom", steps:[
+        "Touchez "+k("hdots")+" en bas de l'écran, puis "+k("share","Partager")+".",
+        "Touchez "+k("addHome","Sur l'écran d'accueil")+", puis <b>Ajouter</b>.",
+        "Ouvrez <b>Garde-manger</b> depuis votre écran d'accueil."]},
+      opera:{name:"Opera · iPhone", arrow:"bottom", steps:[
+        "Touchez "+k("share","Partager")+" depuis le menu du navigateur.",
+        "Touchez "+k("addHome","Sur l'écran d'accueil")+", puis <b>Ajouter</b>.",
+        "Si l'option n'existe pas, ouvrez ce lien dans <b>Safari</b>."]},
+      inapp:{name:"Navigateur intégré", arrow:"top-right", inapp:true, steps:[
+        "Touchez "+k("hdots")+" ou "+k("compass")+" en haut ou en bas de l'écran.",
+        "Choisissez <b>Ouvrir dans Safari</b> (ou « Ouvrir dans le navigateur »).",
+        "Dans Safari, suivez les instructions d'installation qui s'afficheront."]}
+    },
+    android:{
+      chrome:{name:"Chrome · Android", arrow:"top-right", steps:[
+        "Touchez "+k("dots")+" en haut à droite.",
+        "Touchez "+k("phone","Ajouter à l'écran d'accueil")+" puis <b>Installer</b>.",
+        "Ouvrez <b>Garde-manger</b> depuis votre écran d'accueil."]},
+      samsung:{name:"Samsung Internet", arrow:"bottom-right", steps:[
+        "Touchez "+k("burger")+" en bas à droite.",
+        "Touchez "+k("addHome","Ajouter la page à")+", puis <b>Écran d'accueil</b>.",
+        "Ouvrez <b>Garde-manger</b> depuis votre écran d'accueil."]},
+      firefox:{name:"Firefox · Android", arrow:"top-right", steps:[
+        "Touchez "+k("dots")+" (en haut ou en bas à droite selon votre réglage).",
+        "Touchez "+k("phone","Ajouter à l'écran d'accueil")+" puis <b>Ajouter</b>.",
+        "Ouvrez <b>Garde-manger</b> depuis votre écran d'accueil."]},
+      edge:{name:"Edge · Android", arrow:"bottom", steps:[
+        "Touchez "+k("burger")+" en bas de l'écran.",
+        "Touchez "+k("phone","Ajouter au téléphone")+" puis <b>Installer</b>.",
+        "Ouvrez <b>Garde-manger</b> depuis votre écran d'accueil."]},
+      opera:{name:"Opera · Android", arrow:"top-right", steps:[
+        "Touchez "+k("dots")+" en haut à droite.",
+        "Touchez "+k("phone","Écran d'accueil")+" puis <b>Ajouter</b>.",
+        "Ouvrez <b>Garde-manger</b> depuis votre écran d'accueil."]},
+      inapp:{name:"Navigateur intégré", arrow:"top-right", inapp:true, steps:[
+        "Touchez "+k("dots")+" en haut à droite.",
+        "Choisissez <b>Ouvrir dans Chrome</b> (ou « Ouvrir dans le navigateur »).",
+        "Dans Chrome, touchez <b>Installer</b> sur l'écran qui s'affichera."]}
+    }
+  };
+  var g=guides[ios?"ios":"android"][browser];
+
+  function render(){
+    var html='';
+    if(installed){
+      html='<div class="g-in"><img class="g-icon" src="icons/icon-192.png" alt="" width="84" height="84">'+
+        '<h1>C\'est installé&nbsp;!</h1><p class="g-lead">Fermez cet onglet et ouvrez <b>Garde-manger</b> depuis votre écran d\'accueil.</p></div>';
+    } else {
+      html='<div class="g-in">'+
+        '<img class="g-icon" src="icons/icon-192.png" alt="" width="84" height="84">'+
+        '<span class="g-chip">'+g.name+'</span>'+
+        '<h1>Installez Garde-manger</h1>'+
+        '<p class="g-lead">'+(g.inapp?"Vous êtes dans le navigateur d'une autre app : il ne permet pas d'installer Garde-manger.":"L'app s'ouvrira en plein écran depuis votre écran d'accueil, avec la caméra et la synchronisation.")+'</p>'+
+        (bip?'<button class="g-cta" id="g-install">Installer l\'app</button><p class="g-or">ou à la main :</p>':'')+
+        '<ol class="g-steps">'+g.steps.map(function(s){ return '<li><span>'+s+'</span></li>'; }).join("")+'</ol>'+
+        (g.inapp?'<button class="g-copy" id="g-copy">Copier le lien</button>':'')+
+        '<button class="g-skip" id="g-skip">Continuer dans le navigateur</button>'+
+      '</div>'+(bip?'':'<div class="g-arrow g-'+g.arrow+'" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg></div>');
+    }
+    gate.innerHTML=html; gate.hidden=false;
+    document.documentElement.classList.add("gated");
+    var b=document.getElementById("g-install");
+    if(b) b.onclick=function(){ bip.prompt(); bip.userChoice.then(function(c){ if(c.outcome==="accepted"){ installed=true; } bip=null; render(); }); };
+    var s=document.getElementById("g-skip");
+    if(s) s.onclick=function(){ try{ sessionStorage.setItem("gm-skip-install","1"); }catch(e){} gate.hidden=true; document.documentElement.classList.remove("gated"); };
+    var c=document.getElementById("g-copy");
+    if(c) c.onclick=function(){
+      var done=function(){ c.textContent="Lien copié"; };
+      if(navigator.clipboard) navigator.clipboard.writeText(location.href).then(done,function(){ prompt("Copiez ce lien :",location.href); });
+      else prompt("Copiez ce lien :",location.href);
+    };
+  }
+  render();
+})();
+</script>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
@@ -322,7 +484,7 @@ const lsGet=(k,d)=>{ try{ const v=localStorage.getItem(k); return v?JSON.parse(v
 const lsSet=(k,v)=>{ try{ v==null?localStorage.removeItem(k):localStorage.setItem(k,JSON.stringify(v)); }catch(e){} };
 function loadLocal(){ return lsGet(LS_KEY,null); }
 function saveLocal(items){ lsSet(LS_KEY,items); }
-const DEFAULT_SERVER="https://stock.quipaie.com"; // serveur du foyer, pré-rempli dans l'écran de connexion
+const DEFAULT_SERVER = (location.protocol==="https:" && !/github\.io$|claude|usercontent/.test(location.hostname)) ? location.origin : "https://stock.quipaie.com"; // serveur du foyer, pré-rempli dans l'écran de connexion
 const PB_KEY="gm-pocketbase", Q_KEY="gm-sync-queue";
 const PB_FIELDS=["name","brand","code","qty","unit","location","expiry","addedAt"];
 const isPbId=(id)=>/^[a-z0-9]{15}$/.test(id||"");
