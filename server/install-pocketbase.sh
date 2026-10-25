@@ -22,8 +22,10 @@ apt-get update -qq
 apt-get install -y -qq curl unzip ca-certificates >/dev/null
 
 if [ -z "${PB_VERSION:-}" ]; then
-  PB_VERSION=$(curl -fsSL https://api.github.com/repos/pocketbase/pocketbase/releases/latest | grep -m1 '"tag_name"' | sed -E 's/.*"v([^"]+)".*/\1/')
+  RELEASE_JSON=$(curl -fsSL https://api.github.com/repos/pocketbase/pocketbase/releases/latest)
+  PB_VERSION=$(printf '%s\n' "$RELEASE_JSON" | sed -nE 's/.*"tag_name": *"v([^"]+)".*/\1/p' | head -n1 || true)
 fi
+[ -n "$PB_VERSION" ] || { echo "Impossible de trouver la dernière version. Relancez avec PB_VERSION=0.28.4 par exemple."; exit 1; }
 echo "→ PocketBase v${PB_VERSION} (${ARCH})"
 
 id pocketbase >/dev/null 2>&1 || useradd --system --home-dir "$PB_DIR" --shell /usr/sbin/nologin pocketbase
