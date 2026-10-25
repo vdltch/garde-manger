@@ -322,6 +322,7 @@ const lsGet=(k,d)=>{ try{ const v=localStorage.getItem(k); return v?JSON.parse(v
 const lsSet=(k,v)=>{ try{ v==null?localStorage.removeItem(k):localStorage.setItem(k,JSON.stringify(v)); }catch(e){} };
 function loadLocal(){ return lsGet(LS_KEY,null); }
 function saveLocal(items){ lsSet(LS_KEY,items); }
+const DEFAULT_SERVER="https://stock.quipaie.com"; // serveur du foyer, pré-rempli dans l'écran de connexion
 const PB_KEY="gm-pocketbase", Q_KEY="gm-sync-queue";
 const PB_FIELDS=["name","brand","code","qty","unit","location","expiry","addedAt"];
 const isPbId=(id)=>/^[a-z0-9]{15}$/.test(id||"");
@@ -460,7 +461,7 @@ const SYNC_LABEL={local:"Sur ce téléphone uniquement",connecting:"Connexion…
 const SYNC_COLOR={local:"var(--muted)",connecting:"var(--warn)",live:"var(--ok)",offline:"var(--warn)",error:"var(--bad)"};
 function SyncSheet({store,onClose}){
   const {pb,sync,pending,login,logout,resync}=store;
-  const [url,setUrl]=useState(pb?pb.url:""); const [email,setEmail]=useState(pb?pb.email:""); const [pw,setPw]=useState("");
+  const [url,setUrl]=useState(pb?pb.url:DEFAULT_SERVER); const [email,setEmail]=useState(pb?pb.email:""); const [pw,setPw]=useState("");
   const [err,setErr]=useState(""); const [busy,setBusy]=useState(false);
   const submit=async(e)=>{ e.preventDefault(); setErr(""); setBusy(true);
     try{ await login(url,email,pw); setPw(""); buzz(15); }catch(x){ setErr(x.message); buzz([30,60,30]); } finally{ setBusy(false); } };
