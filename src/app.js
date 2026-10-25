@@ -8,6 +8,8 @@ import { Scanner } from "./ui/scanner.js";
 import { Editor } from "./ui/editor.js";
 import { StockCard, CourseCard } from "./ui/cards.js";
 import { SyncSheet, ResetSheet } from "./ui/sync.js";
+import { StorePicker, TripLineSheet, TripBar, BasketSheet } from "./ui/trip.js";
+import { loadTrip, saveTrip, newTrip, rememberStore, rememberPrice, priceFor, archiveTrip, lineKey, euros, tripTotal } from "./trip.js";
 import { useState, useEffect, useRef, html } from "./lib.js";
 
 /* ---------- App ---------- */
@@ -37,6 +39,45 @@ export function App(){
   const toBuyCount=courses.filter(i=>!i.inCart).length, inCart=courses.filter(i=>i.inCart);
   const lotCount={}; stock.forEach(i=>{ if(i.code) lotCount[i.code]=(lotCount[i.code]||0)+1; });
   const [newItem,setNewItem]=useState("");
+
+  // ---- Jour de courses
+  const [trip,setTripState]=useState(()=>loadTrip());
+  const tripRef=useRef(trip); tripRef.current=trip;
+  const setTrip=(t)=>{ tripRef.current=t; setTripState(t); saveTrip(t); };
+  const [tripSheet,setTripSheet]=useState(null);      // "store" | "basket" | null
+  const [tripLine,setTripLine]=useState(null);         // line being priced, over the camera
+  const startTrip=(store,budget)=>{ rememberStore(store); setTrip(newTrip(store,budget)); flash(`Courses chez ${store.name} : scannez en remplissant le chariot`); };
+  const onTrip=(text)=>{
+    const p=classify(text), t=tripRef.current; if(!t) return;
+    const known=p.code?itemsNow.current.find(i=>i.code===p.code):null;
+    const line={id:"l"+Date.now(), code:p.code||"", name:p.name||(known&&known.name)||(p.code?placeholderName(p.code):"Article"), brand:known?known.brand:"", image:known?known.image:"",
+      nutri:known?known.nutri:"", nova:known?known.nova:0, eco:known?known.eco:"", location:known?known.location:"", qty:1, price:0, loading:!!(p.code&&!known), pricing:true};
+    setTripLine(line);
+    const patch=(x)=>setTripLine(l=>l&&l.id===line.id?{...l,...x}:l);
+    if(p.code && !known) lookup(p.code).then(r=>patch({loading:false, ...(r.found?{name:r.name||line.name,brand:r.brand,image:r.image,nutri:r.nutri,nova:r.nova,eco:r.eco,location:r.location,shelfDays:r.shelfDays}:{})}));
+    priceFor(t.store,line).then(r=>patch({pricing:false, ...(r?{price:r.price,priceSource:r.source}:{})})).catch(()=>patch({pricing:false}));
+  };
+  const addTripLine=(l)=>{ const t=tripRef.current; if(!t) return;
+    const {loading,pricing,...line}=l;
+    const same=t.lines.find(x=>lineKey(x)===lineKey(line)&&Number(x.price)===Number(line.price));
+    const lines=same?t.lines.map(x=>x===same?{...x,qty:x.qty+line.qty}:x):[...t.lines,line];
+    setTrip({...t,lines}); rememberPrice(t.store,line);
+    const listed=courses.find(i=>(line.code&&i.code===line.code)||(!line.code&&i.name.toLowerCase()===line.name.toLowerCase()));
+    if(listed && !listed.inCart) put({...listed,inCart:true});
+    flash(`Panier : ${line.name}${line.qty>1?` ×${line.qty}`:""}${line.price>0?` · ${euros(line.price*line.qty)}`:""} — total ${euros(tripTotal(lines))}`); };
+  // end of the day: put everything away (new lots, shopping list lines back in stock), archive the receipt
+  const finishTrip=async(store)=>{ const t=tripRef.current; if(!t) return;
+    if(store) vt(()=>t.lines.forEach(l=>{
+      const all=itemsNow.current, same=(i)=>l.code?i.code===l.code:i.name.toLowerCase()===l.name.toLowerCase();
+      const sd=Number(l.shelfDays)||shelfFor(l.code); const exp=sd?iso(sd):"";
+      const lots=all.filter(i=>same(i)&&(Number(i.qty)||0)>0), listed=all.find(i=>same(i)&&!(Number(i.qty)>0));
+      if(listed) put({...listed,qty:l.qty,inCart:false,toBuy:1,expiry:exp,addedAt:Date.now()});
+      else if(lots.length && !exp){ const lot=latestLot(lots); put({...lot,qty:(Number(lot.qty)||0)+l.qty}); }
+      else { const base=lots[0]||{}; put({id:uid(),name:l.name,brand:l.brand||base.brand||"",code:l.code||"",image:l.image||base.image||"",nutri:l.nutri||base.nutri||"",nova:l.nova||base.nova||0,eco:l.eco||base.eco||"",
+        qty:l.qty,unit:base.unit||"pcs",location:l.location||base.location||"Placard",expiry:exp,addedAt:Date.now(),toBuy:1,inCart:false}); }
+    }));
+    const sum=await archiveTrip(t); setTrip(null);
+    flash(store?`Courses rangées · ${euros(sum.total)}`:`Courses terminées · ${euros(sum.total)}`); };
   const c={ok:0,warn:0,bad:0,none:0}; stock.forEach(i=>c[status(i)]++);
   const watch=c.warn+c.bad;
 
@@ -74,6 +115,7 @@ export function App(){
   const go=(t)=>{ if(t!==tab){ buzz(6); vt(()=>{ setTab(t); }); window.scrollTo({top:0,behavior:REDUCED?"auto":"smooth"}); } };
 
   const openScan=()=>{ unlockAudio(); buzz(10); setScan(true); };
+  const toggleTrip=()=>{ buzz(10); if(trip) setTripSheet("basket"); else setTripSheet("store"); };
   // burst mode: every read is stored at once, product sheets fill in the background
   const burstN=useRef(0);
   const onBurst=(text)=>{
@@ -115,7 +157,7 @@ export function App(){
   const total=Math.max(1,stock.length);
   const titles={stock:"Garde-manger",soon:"À finir vite",courses:"Courses"};
 
-  return html`<div class="app">
+  return html`<div class=${"app"+(trip?" in-trip":"")}>
     <header class="top">
       <div><div class="date">${wd}</div><h1>${titles[tab]}</h1></div>
       <div class="top-act"><button class="round ghost press" aria-label=${"Synchronisation : "+SYNC_LABEL[sync]} onClick=${()=>setSyncOpen(true)}>${I.cloud}<span class="sdot" style=${{background:SYNC_COLOR[sync]}}></span></button>
@@ -146,6 +188,10 @@ export function App(){
     </div>
 
 
+    ${tab==="courses" && html`<div class=${"trip-toggle"+(trip?" on":"")}>
+        <div><b>Jour de courses</b><span>${trip?`En cours chez ${trip.store.name} · ${euros(tripTotal(trip.lines))}`:"Scannez au magasin, le total se calcule tout seul."}</span></div>
+        <button class="switch press" role="switch" aria-checked=${!!trip} aria-label="Jour de courses" onClick=${toggleTrip}><i></i></button>
+      </div>`}
     ${tab==="courses" && html`<form class="list-add" onSubmit=${addToList}>
         <input id="list-add" placeholder="Ajouter à la liste : lait, pain…" autocomplete="off" value=${newItem} onChange=${e=>setNewItem(e.target.value)} aria-label="Article à acheter" />
         <button class="press" type="submit" aria-label="Ajouter à la liste">${I.plus}</button>
@@ -165,6 +211,7 @@ export function App(){
         : html`<${StockCard} key=${it.id} it=${it} i=${i} lots=${it.code?lotCount[it.code]:0} onOpen=${setEdit} onStep=${step}/>`)}</div>
     </section>`)}
 
+    ${trip && html`<${TripBar} trip=${trip} onOpen=${()=>setTripSheet("basket")} />`}
     <nav class="dock" aria-label="Navigation">
       <div class="tabbar">
         <button class="tab press" aria-current=${tab==="stock"?"page":undefined} onClick=${()=>go("stock")}>${I.shelf}Stock</button>
@@ -177,7 +224,10 @@ export function App(){
 
     ${resetToken && html`<${ResetSheet} token=${resetToken} onDone=${closeReset} />`}
     ${syncOpen && html`<${SyncSheet} store=${store} onClose=${()=>setSyncOpen(false)} />`}
-    ${scan && html`<${Scanner} onResult=${onScanned} onBurst=${onBurst} onClose=${closeScanner} />`}
+    ${scan && html`<${Scanner} onResult=${onScanned} onBurst=${onBurst} onTrip=${trip?onTrip:null} trip=${trip?trip.store.name:null} paused=${!!tripLine} onClose=${closeScanner} />`}
+    ${tripLine && html`<${TripLineSheet} key=${tripLine.id} line=${tripLine} onSave=${addTripLine} onClose=${()=>setTripLine(null)} />`}
+    ${tripSheet==="store" && html`<${StorePicker} onStart=${startTrip} onClose=${()=>setTripSheet(null)} />`}
+    ${tripSheet==="basket" && trip && html`<${BasketSheet} trip=${trip} onChange=${setTrip} onFinish=${finishTrip} onCancel=${()=>{ setTrip(null); flash("Courses annulées"); }} onClose=${()=>setTripSheet(null)} />`}
     ${edit && html`<${Editor} key=${edit.id||"new"+scanCount} initial=${edit} scanCount=${scanCount} onClose=${()=>setEdit(null)}
       onSave=${it=>{ const {_learn,...clean}=it; vt(()=>put(clean)); flash(`${clean.name} rangé · ${clean.location}`);
         if(clean.code && clean.name!==placeholderName(clean.code)){

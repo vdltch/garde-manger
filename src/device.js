@@ -1,7 +1,7 @@
 // Phone feedback: view transitions, vibration, scanner beep.
 
 
-export const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+export const REDUCED = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /* ---------- Motion helpers ---------- */
 export const vt = (fn) => {

@@ -10,7 +10,7 @@ export const lsGet=(k,d)=>{ try{ const v=localStorage.getItem(k); return v?JSON.
 export const lsSet=(k,v)=>{ try{ v==null?localStorage.removeItem(k):localStorage.setItem(k,JSON.stringify(v)); }catch(e){} };
 export function loadLocal(){ return lsGet(LS_KEY,null); }
 export function saveLocal(items){ lsSet(LS_KEY,items); }
-export const DEFAULT_SERVER = (location.protocol==="https:" && !/github\.io$/.test(location.hostname)) ? location.origin : "https://stock.quipaie.com"; // serveur du foyer, pré-rempli dans l'écran de connexion
+export const DEFAULT_SERVER = (typeof location!=="undefined" && location.protocol==="https:" && !/github\.io$/.test(location.hostname)) ? location.origin : "https://stock.quipaie.com"; // serveur du foyer, pré-rempli dans l'écran de connexion
 export const PB_KEY="gm-pocketbase", Q_KEY="gm-sync-queue";
 export const PB_FIELDS=["name","brand","code","qty","unit","location","expiry","addedAt","image","nutri","nova","eco","toBuy","inCart"];
 export const PB_NUMBERS=["qty","addedAt","nova","toBuy"];

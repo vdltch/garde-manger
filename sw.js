@@ -2,7 +2,7 @@
 // Never touches the PocketBase API (/api/) or its admin dashboard (/_/).
 const CACHE = "garde-manger-v8";
 const SHELL = ["./", "./manifest.webmanifest", "./icons/icon-192.png", "./icons/icon-512.png", "./styles.css",
-  "./src/app.js", "./src/barcode.js", "./src/device.js", "./src/domain.js", "./src/gate.js", "./src/lib.js", "./src/main.js", "./src/products.js", "./src/storage.js", "./src/sw-register.js", "./src/ui/cards.js", "./src/ui/editor.js", "./src/ui/focus.js", "./src/ui/icons.js", "./src/ui/scanner.js", "./src/ui/sheet.js", "./src/ui/sync.js", "./src/ui/ticket.js",
+  "./src/app.js", "./src/barcode.js", "./src/device.js", "./src/domain.js", "./src/gate.js", "./src/lib.js", "./src/main.js", "./src/products.js", "./src/storage.js", "./src/trip.js", "./src/ui/trip.js", "./src/sw-register.js", "./src/ui/cards.js", "./src/ui/editor.js", "./src/ui/focus.js", "./src/ui/icons.js", "./src/ui/scanner.js", "./src/ui/sheet.js", "./src/ui/sync.js", "./src/ui/ticket.js",
   "./vendor/react.production.min.js", "./vendor/react-dom.production.min.js", "./vendor/htm.umd.js", "./vendor/zxing.min.js",
   "./vendor/barcode-detector.iife.js", "./vendor/zxing_reader.wasm",
   "https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js",

@@ -1,6 +1,6 @@
 """End-to-end test setup: a real PocketBase (migrations + hooks) serving the app from the repo,
 a household account, and a fake ntfy server. Run: PB_BIN=path/to/pocketbase pytest tests/e2e"""
-import http.server, json, os, shutil, socket, subprocess, tempfile, threading, time
+import http.server, json, os, re, shutil, socket, subprocess, tempfile, threading, time
 from pathlib import Path
 
 import pytest
@@ -88,17 +88,41 @@ OFF_PRODUCT = {"status": 1, "product": {
     "categories_tags": ["en:spreads", "en:sweet-spreads"]}}
 
 
+COCA = {"status": 1, "product": {"code": "5449000000996", "product_name_fr": "Coca-Cola", "brands": "Coca-Cola", "quantity": "33 cl",
+    "categories_tags": ["en:beverages", "en:sodas"]}}
+
+
+def off_product(url):
+    return COCA if "5449000000996" in url else OFF_PRODUCT
+
+
+def open_prices(url):
+    if "3017620422003" in url:
+        return {"items": [{"price": 3.49, "currency": "EUR", "price_per": None, "location_osm_id": 2, "location_osm_type": "WAY", "date": "2026-10-20"},
+                          {"price": 3.99, "currency": "EUR", "price_per": None, "location_osm_id": 9, "location_osm_type": "NODE", "date": "2026-10-01"}],
+                "total": 2}
+    return {"items": [], "total": 0}
+
+
+OVERPASS = {"elements": [
+    {"type": "way", "id": 2, "center": {"lat": 47.995, "lon": 2.735}, "tags": {"shop": "supermarket", "name": "E.Leclerc", "addr:city": "Amilly"}},
+    {"type": "node", "id": 5, "lat": 47.999, "lon": 2.74, "tags": {"shop": "convenience", "brand": "Carrefour City"}},
+]}
+
+
 @pytest.fixture
 def phone(browser, server):
     """A fresh 'phone' (desktop-sized so the install screen stays out of the way) with Open Food Facts mocked."""
     pages = []
 
-    def make():
-        ctx = browser.new_context(viewport={"width": 430, "height": 900}, locale="fr-FR")
+    def make(**options):
+        ctx = browser.new_context(viewport={"width": 430, "height": 900}, locale="fr-FR", **options)
         page = ctx.new_page()
         page.errors = []
         page.on("pageerror", lambda e: page.errors.append(str(e)))
-        page.route("**/*openfoodfacts.org/**", lambda r: r.fulfill(status=200, content_type="application/json", body=json.dumps(OFF_PRODUCT)))
+        page.route(re.compile(r"https://world\.openfoodfacts\.org/.*"), lambda r: r.fulfill(status=200, content_type="application/json", body=json.dumps(off_product(r.request.url))))
+        page.route(re.compile(r"https://prices\.openfoodfacts\.org/.*"), lambda r: r.fulfill(status=200, content_type="application/json", body=json.dumps(open_prices(r.request.url))))
+        page.route(re.compile(r"https://overpass[^/]*/api/interpreter"), lambda r: r.fulfill(status=200, content_type="application/json", body=json.dumps(OVERPASS)))
         page.route("**/*openproductsfacts.org/**", lambda r: r.fulfill(status=404, body="{}"))
         page.route("**/*openbeautyfacts.org/**", lambda r: r.fulfill(status=404, body="{}"))
         page.goto(server["base"] + "/")

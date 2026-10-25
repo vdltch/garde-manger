@@ -81,6 +81,15 @@ test("all screens render without errors", async () => {
   SyncSheet({ store: sync, onClose: noop });
   SyncSheet({ store: { ...sync, pb: { url: "https://stock.example.org", token: "t", email: "a@b.fr" }, sync: "live", pending: 2 }, onClose: noop });
   ResetSheet({ token: "abc", onDone: noop });
+  const { StorePicker, TripLineSheet, TripBar, BasketSheet } = await import("../../src/ui/trip.js");
+  const trip = { id: "t1", store: { name: "E.Leclerc", address: "Amilly", osmId: 2, osmType: "way" }, budget: 50, startedAt: Date.now(),
+    lines: [{ id: "l1", code: "3017620422003", name: "Nutella", qty: 2, price: 3.49, priceSource: "Open Prices · ce magasin" }, { id: "l2", name: "Tomates", qty: 1, price: 0 }] };
+  StorePicker({ onStart: noop, onClose: noop });
+  TripLineSheet({ line: { ...trip.lines[0], loading: false, pricing: false }, onSave: noop, onClose: noop });
+  TripLineSheet({ line: { id: "l3", code: "1", name: "Produit 1", qty: 1, price: 0, loading: true, pricing: true }, onSave: noop, onClose: noop });
+  TripBar({ trip, onOpen: noop });
+  BasketSheet({ trip, onChange: noop, onFinish: noop, onCancel: noop, onClose: noop });
+  Scanner({ onResult: noop, onBurst: noop, onTrip: noop, trip: "E.Leclerc", paused: true, onClose: noop });
 
   for (const name of ["Sheet", "Ticket", "Barcode"]) assert.ok(rendered.includes(name), `${name} was not rendered`);
 });

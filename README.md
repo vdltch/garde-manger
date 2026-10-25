@@ -14,6 +14,7 @@ Application web mobile (PWA) pour gérer le stock alimentaire de la maison : on 
 - **Lots** : le même produit avec des dates différentes ; au scan d'un produit déjà en stock, « Autre date » crée un nouveau lot.
 - **Scan en rafale** : pour ranger un sac de courses d'un coup, chaque bip ajoute l'article, les fiches se remplissent en arrière-plan.
 - **Liste de courses** : articles libres, quantité à acheter, panier à cocher en magasin, puis « Ranger » qui remet tout en stock avec une date suggérée. Partagée en direct entre téléphones.
+- **Jour de courses** : un interrupteur dans l'onglet Courses. L'app trouve les magasins autour de vous (OpenStreetMap) ou vous le choisissez ; chaque article scanné va dans le panier du jour avec son prix — votre dernier prix dans ce magasin, celui du foyer, ou celui d'[Open Prices](https://prices.openfoodfacts.org) — et le total (avec budget facultatif) se calcule en direct. À la fin : un ticket de caisse, tout est rangé dans le stock, les articles de la liste sont cochés, et les prix sont mémorisés pour la prochaine fois.
 - **Notifications** chaque matin des produits à finir, via [ntfy](https://ntfy.sh) (voir plus bas).
 - **Ajout manuel** pour les produits sans code (fruits, légumes, restes…).
 - **Quatre emplacements** : Frigo, Congélateur, Placard, Cave.
@@ -134,6 +135,7 @@ src/app.js            écran principal : stock, bientôt, courses, flux de scan
 src/domain.js         logique pure (dates, codes EAN, catégories) — testée avec node
 src/storage.js        cache local + synchro PocketBase (file d'attente, temps réel, connexion)
 src/products.js       fiches produit : catalogue du foyer puis Open Food Facts
+src/trip.js           jour de courses : magasins autour, prix, panier, historique
 src/barcode.js        lecture des codes : BarcodeDetector, ZXing-C++ WebAssembly, ZXing JS
 src/device.js         transitions, vibrations, bip du scanner
 src/ui/*.js           composants (scanner, fiche, cartes, synchro, fenêtres)
