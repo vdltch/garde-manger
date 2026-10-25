@@ -9,8 +9,8 @@ jobs:
     name: Logique et structure (node)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
       - run: npm run check
@@ -21,8 +21,8 @@ jobs:
     env:
       PB_VERSION: "0.28.4"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Bibliothèques de l'app
@@ -37,6 +37,9 @@ jobs:
           pip install pytest playwright requests
           python -m playwright install --with-deps chromium
       - name: Tests de bout en bout
-        run: pytest tests/e2e -v
+        run: pytest tests/e2e -v --tb=short -p no:cacheprovider --junitxml=e2e.xml
         env:
           PB_BIN: .pb/pocketbase
+      - name: Détail des échecs
+        if: failure()
+        run: python tests/e2e/report.py e2e.xml
