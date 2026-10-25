@@ -65,7 +65,7 @@ L'app est servie en HTTPS : le navigateur refuse de parler à un serveur en HTTP
 
 ### 4. Connecter l'app
 
-Dans l'app, bouton **nuage** en haut → adresse `https://stock.mondomaine.fr` + e-mail et mot de passe. Le stock déjà présent sur le téléphone est envoyé sur le serveur (sauf les exemples). La pastille du bouton indique l'état : vert synchronisé, orange hors ligne, rouge session expirée.
+Dans l'app, bouton **nuage** en haut → adresse `https://stock.mondomaine.fr` + e-mail et mot de passe. Le stock déjà présent sur le téléphone est envoyé sur le serveur. La pastille du bouton indique l'état : vert synchronisé, orange hors ligne, rouge session expirée.
 
 ### Sauvegarde
 

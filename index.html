@@ -100,8 +100,6 @@ h1{font-family:var(--f-display);font-weight:800;font-size:clamp(1.75rem,8vw,2.3r
 .chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .chip[aria-pressed="true"] i{box-shadow:0 0 0 2px var(--bg)}
 
-.demo{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:14px;padding:10px 12px 10px 14px;border-radius:14px;border:1.5px dashed var(--line);font-size:.84rem;color:var(--muted)}
-.demo button{border:0;background:var(--surface);color:var(--ink);border-radius:10px;padding:7px 11px;font-weight:600;font-size:.8rem}
 
 /* Shelves */
 .shelf{margin-top:24px}
@@ -117,7 +115,6 @@ h1{font-family:var(--f-display);font-weight:800;font-size:clamp(1.75rem,8vw,2.3r
 .name{font-weight:600;font-size:.98rem;line-height:1.25;overflow-wrap:anywhere}
 .sub{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;margin-top:4px;font-size:.78rem;color:var(--muted)}
 .exp{font-family:var(--f-mono);font-size:.64rem;letter-spacing:.02em;padding:3px 7px;border-radius:7px;color:var(--rc);background:color-mix(in srgb,var(--rc) 13%,transparent)}
-.tag{font-family:var(--f-mono);font-size:.6rem;text-transform:uppercase;letter-spacing:.08em;border:1px dashed currentColor;border-radius:5px;padding:1px 5px}
 .step{display:flex;align-items:center;background:var(--surface-2);border-radius:14px;padding:3px}
 .step button{width:34px;height:34px;border:0;background:none;border-radius:11px;display:grid;place-items:center}
 .step button:active{background:var(--surface)}
@@ -434,15 +431,6 @@ const initials = (n) => { const w=(n||"?").replace(/[^\p{L}\p{N} ]/gu,"").trim()
 const uid = () => { const a="abcdefghijklmnopqrstuvwxyz0123456789"; const r=crypto.getRandomValues(new Uint8Array(15)); let s=""; r.forEach(b=>{ s+=a[b%36]; }); return s; };
 const qtyText = (it) => it.unit==="pcs" ? "" : it.unit;
 
-const DEMO = [
-  {name:"Yaourt nature",brand:"Les 2 Vaches",qty:4,unit:"pcs",location:"Frigo",expiry:iso(2),code:"3760086580149"},
-  {name:"Lait demi-écrémé",brand:"Lactel",qty:2,unit:"L",location:"Placard",expiry:iso(45),code:"3428273980046"},
-  {name:"Jambon blanc",brand:"Herta",qty:1,unit:"sachet",location:"Frigo",expiry:iso(-1),code:"3154230801863"},
-  {name:"Pâtes penne",brand:"Barilla",qty:500,unit:"g",location:"Placard",expiry:iso(300),code:"8076802085738"},
-  {name:"Petits pois",brand:"Picard",qty:1,unit:"sachet",location:"Congélateur",expiry:iso(120),code:""},
-  {name:"Pommes Golden",brand:"",qty:6,unit:"pcs",location:"Cave",expiry:"",code:""},
-  {name:"Beurre doux",brand:"Président",qty:0,unit:"pcs",location:"Frigo",expiry:"",code:""},
-].map((x,i)=>({...x,id:"ex"+(i+1),demo:true,addedAt:Date.now()}));
 
 /* ---------- Motion helpers ---------- */
 const vt = (fn) => {
@@ -478,13 +466,12 @@ function scanBeep(){
 
 /* ---------- Storage ----------
    1. localStorage: always, as the on-device cache (works offline).
-   2. PocketBase: when the user signs in to their own server, changes go through a queue and sync in real time.
-   3. claude.ai shared db: only when the page runs as a claude.ai artifact. */
+   2. PocketBase: when the user signs in to their own server, changes go through a queue and sync in real time. */
 const lsGet=(k,d)=>{ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):d; }catch(e){ return d; } };
 const lsSet=(k,v)=>{ try{ v==null?localStorage.removeItem(k):localStorage.setItem(k,JSON.stringify(v)); }catch(e){} };
 function loadLocal(){ return lsGet(LS_KEY,null); }
 function saveLocal(items){ lsSet(LS_KEY,items); }
-const DEFAULT_SERVER = (location.protocol==="https:" && !/github\.io$|claude|usercontent/.test(location.hostname)) ? location.origin : "https://stock.quipaie.com"; // serveur du foyer, pré-rempli dans l'écran de connexion
+const DEFAULT_SERVER = (location.protocol==="https:" && !/github\.io$/.test(location.hostname)) ? location.origin : "https://stock.quipaie.com"; // serveur du foyer, pré-rempli dans l'écran de connexion
 const PB_KEY="gm-pocketbase", Q_KEY="gm-sync-queue";
 const PB_FIELDS=["name","brand","code","qty","unit","location","expiry","addedAt"];
 const isPbId=(id)=>/^[a-z0-9]{15}$/.test(id||"");
@@ -502,11 +489,11 @@ function pbReq(cfg,path,opt={}){
 }
 
 function useStock(){
-  const [items,setItems] = useState(()=> loadLocal() ?? DEMO);
+  const [items,setItems] = useState(()=> (loadLocal() || []).filter(i=>!i.demo));
   const [pb,setPb] = useState(()=> lsGet(PB_KEY,null));            // {url, token, email}
   const [sync,setSync] = useState(()=> lsGet(PB_KEY,null) ? "connecting" : "local"); // local | connecting | live | offline | error
   const [pending,setPending] = useState(()=> lsGet(Q_KEY,[]).length);
-  const db = useRef(null), itemsRef = useRef(items), cfg = useRef(pb), queue = useRef(lsGet(Q_KEY,[])), flushing = useRef(false);
+  const itemsRef = useRef(items), cfg = useRef(pb), queue = useRef(lsGet(Q_KEY,[])), flushing = useRef(false);
   itemsRef.current = items; cfg.current = pb;
 
   const saveQ = ()=>{ lsSet(Q_KEY,queue.current); setPending(queue.current.length); };
@@ -543,20 +530,6 @@ function useStock(){
   const resync = async()=>{ if(!cfg.current) return; setSync("connecting");
     try{ if(await flush()){ await pull(); setSync("live"); } }catch(e){ setSync(e.status===401||e.status===403?"error":"offline"); } };
 
-  // claude.ai artifact storage (ignored when self-hosted)
-  useEffect(()=>{
-    let unsub=null, alive=true;
-    const connect=(tries)=>{
-      if(!alive||cfg.current) return;
-      if(!(window.claude && window.claude.use)){ if(tries>0) setTimeout(()=>connect(tries-1),300); return; }
-      window.claude.use("db").then(d=>{
-        if(!d||!alive) return; db.current=d;
-        unsub = d.collection("stock").onSnapshot(s=>{ vt(()=>setItems(s.docs.map(x=>({...x.data(),id:x.id})))); },()=>{});
-      }).catch(()=>{});
-    };
-    connect(10);
-    return ()=>{alive=false; unsub&&unsub();};
-  },[]);
 
   // PocketBase: refresh the session, then live updates over server-sent events
   useEffect(()=>{
@@ -589,15 +562,12 @@ function useStock(){
     return ()=>{ alive=false; es&&es.close(); removeEventListener("online",online); };
   },[pb&&pb.url,pb&&pb.token]);
 
-  useEffect(()=>{ if(!db.current) saveLocal(items); },[items]);
+  useEffect(()=>{ saveLocal(items); },[items]);
 
-  const isDemo=(id)=>{ const it=itemsRef.current.find(x=>x.id===id); return !!(it&&it.demo); };
   const put = (it)=>{ setItems(p=>{const i=p.findIndex(x=>x.id===it.id); const n=[...p]; i<0?n.push(it):n[i]=it; return n;});
-    if(cfg.current&&cfg.current.token){ if(!it.demo){ enqueue({op:"put",it}); flush(); } }
-    else if(db.current) db.current.collection("stock").doc(it.id).set(it).catch(()=>{}); };
-  const del = (id)=>{ const demo=isDemo(id); setItems(p=>p.filter(x=>x.id!==id));
-    if(cfg.current&&cfg.current.token){ if(!demo){ enqueue({op:"del",id}); flush(); } }
-    else if(db.current) db.current.collection("stock").doc(id).delete().catch(()=>{}); };
+    if(cfg.current&&cfg.current.token){ enqueue({op:"put",it}); flush(); } };
+  const del = (id)=>{ setItems(p=>p.filter(x=>x.id!==id));
+    if(cfg.current&&cfg.current.token){ enqueue({op:"del",id}); flush(); } };
 
   const login = async(url,email,password)=>{
     url=url.trim().replace(/\/+$/,""); if(!/^https?:\/\//.test(url)) url="https://"+url;
@@ -606,9 +576,9 @@ function useStock(){
     try{ r=await pbReq({url},"/api/collections/users/auth-with-password",{method:"POST",body:JSON.stringify({identity:email.trim(),password})}); }
     catch(e){ if(!e.status) throw new Error("Serveur injoignable. Vérifiez l'adresse et que PocketBase tourne.");
       if(e.status===400) throw new Error("E-mail ou mot de passe incorrect."); throw e; }
-    // send what is already on this phone (examples excluded), with ids PocketBase accepts
-    const mine=itemsRef.current.filter(i=>!i.demo).map(i=>isPbId(i.id)?i:{...i,id:uid()});
-    setItems(p=>[...p.filter(i=>i.demo),...mine]);
+    // send what is already on this phone, with ids PocketBase accepts
+    const mine=itemsRef.current.map(i=>isPbId(i.id)?i:{...i,id:uid()});
+    setItems(mine);
     mine.forEach(it=>enqueue({op:"put",it}));
     const n={url,token:r.token,email:(r.record&&r.record.email)||email.trim()};
     lsSet(PB_KEY,n); cfg.current=n; setPb(n);
@@ -644,7 +614,7 @@ function SyncSheet({store,onClose}){
         <div class="actions">
           ${pb && html`<button type="button" class="btn del press" onClick=${()=>logout()}>Oublier</button>`}
           <button class="btn main press" type="submit" disabled=${busy}>${busy?"Connexion…":"Se connecter"}</button></div>
-        <p class="hint">Le stock déjà présent sur ce téléphone est envoyé sur le serveur à la connexion (sauf les exemples).</p>
+        <p class="hint">Le stock déjà présent sur ce téléphone est envoyé sur le serveur à la connexion.</p>
       </form>`}
   `}<//>`;
 }
@@ -802,7 +772,7 @@ function Editor({initial,scanCount,onSave,onDelete,onClose}){
     <h2>${isNew?(initial.scanned?"Ranger cet article":"Nouvel article"):"Modifier"}</h2>
     <form class="form" onSubmit=${e=>{e.preventDefault(); if(!f.name.trim()) return;
       const {found,hint,scanned,raw,...clean}=f;
-      onSave({...clean,name:f.name.trim(),qty:Math.max(0,Number(f.qty)||0),id:f.id||uid(),demo:false,addedAt:f.addedAt||Date.now()}); buzz(15); close();}}>
+      onSave({...clean,name:f.name.trim(),qty:Math.max(0,Number(f.qty)||0),id:f.id||uid(),addedAt:f.addedAt||Date.now()}); buzz(15); close();}}>
       <label class="field">Produit<input id="f-name" required value=${f.name} onChange=${set("name")} placeholder="Ex. Riz basmati" autoComplete="off" /></label>
       <label class="field">Marque<input id="f-brand" value=${f.brand} onChange=${set("brand")} placeholder="Facultatif" autoComplete="off" /></label>
       <div class="field">Rangé où ?
@@ -831,7 +801,7 @@ function StockCard({it,i,onOpen,onStep}){
     <div class="ring" style=${{"--p":ringPct(it)}} aria-hidden="true"><b>${initials(it.name)}</b></div>
     <button class="info" onClick=${()=>onOpen(it)}>
       <div class="name">${it.name}</div>
-      <div class="sub">${lab && html`<span class="exp">${lab}</span>`}${it.brand && html`<span>${it.brand}</span>`}${it.demo && html`<span class="tag">exemple</span>`}</div>
+      <div class="sub">${lab && html`<span class="exp">${lab}</span>`}${it.brand && html`<span>${it.brand}</span>`}</div>
     </button>
     <div class="step">
       <button class="press" aria-label=${"Retirer un "+it.name} onClick=${()=>onStep(it,-1)}>${I.minus}</button>
@@ -845,7 +815,7 @@ function CourseCard({it,i,onBuy,onRemove,onOpen}){
     <div class="ring" style=${{"--p":0}} aria-hidden="true"><b>${initials(it.name)}</b></div>
     <button class="info" onClick=${()=>onOpen(it)}>
       <div class="name">${it.name}</div>
-      <div class="sub"><span>${it.location}</span>${it.brand && html`<span>${it.brand}</span>`}${it.demo && html`<span class="tag">exemple</span>`}</div>
+      <div class="sub"><span>${it.location}</span>${it.brand && html`<span>${it.brand}</span>`}</div>
     </button>
     <div style=${{display:"flex",alignItems:"center",gap:"2px"}}>
       <button class="x-sm press" aria-label=${"Retirer "+it.name+" de la liste"} onClick=${()=>onRemove(it)}>${I.close}</button>
@@ -872,7 +842,6 @@ function App(){
   const sorter=(a,b)=>(a.expiry||"9999").localeCompare(b.expiry||"9999")||a.name.localeCompare(b.name);
   const list = (tab==="soon" ? stock.filter(i=>["warn","bad"].includes(status(i))) : tab==="courses" ? courses : stock).filter(match).sort(sorter);
   const shelves = tab==="stock" ? PLACES.map(p=>[p,list.filter(i=>i.location===p.id)]).filter(s=>s[1].length) : [[null,list]];
-  const hasDemo=items.some(i=>i.demo);
 
   const flash=(msg,undo)=>{ setToast({msg,undo,k:Date.now()}); clearTimeout(window.__t); window.__t=setTimeout(()=>setToast(null),4200); };
   const step=(it,d)=>{ buzz(8); const n=Math.max(0,(Number(it.qty)||0)+d);
@@ -887,7 +856,7 @@ function App(){
     setScan(false); setBusy(true);
     const n=scanCount+1; setScanCount(n); try{ localStorage.setItem("gm-scans",n); }catch(e){}
     const p=await parseScan(text); setBusy(false);
-    const existing=p.code&&items.find(i=>i.code===p.code&&!i.demo);
+    const existing=p.code&&items.find(i=>i.code===p.code);
     if(existing){ const nq=(Number(existing.qty)||0)+1; vt(()=>put({...existing,qty:nq})); flash(`+1 ${existing.name} · ${nq} ${qtyText(existing)||"en stock"}`); return; }
     setEdit({...p,scanned:true});
   };
@@ -926,8 +895,6 @@ function App(){
       </div>
     </div>
 
-    ${hasDemo && html`<div class="demo"><span>Les articles « exemple » sont fictifs.</span>
-      <button class="press" onClick=${()=>vt(()=>items.filter(i=>i.demo).forEach(i=>del(i.id)))}>Effacer les exemples</button></div>`}
 
     ${list.length===0 && html`<div class="empty">
       <div class="art">${tab==="courses"?I.cart:tab==="soon"?I.clock:I.scan}</div>
