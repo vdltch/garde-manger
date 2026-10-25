@@ -1,7 +1,9 @@
 // Garde-manger service worker: app shell + libraries cached for offline use.
 // Never touches the PocketBase API (/api/) or its admin dashboard (/_/).
-const CACHE = "garde-manger-v7";
+const CACHE = "garde-manger-v8";
 const SHELL = ["./", "./manifest.webmanifest", "./icons/icon-192.png", "./icons/icon-512.png",
+  "./vendor/react.production.min.js", "./vendor/react-dom.production.min.js", "./vendor/htm.umd.js", "./vendor/zxing.min.js",
+  "./vendor/barcode-detector.iife.js", "./vendor/zxing_reader.wasm",
   "https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js",
   "https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js",
   "https://unpkg.com/htm@3.1.1/dist/htm.umd.js",

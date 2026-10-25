@@ -243,6 +243,11 @@ h1{font-family:var(--f-display);font-weight:800;font-size:clamp(1.75rem,8vw,2.3r
 .scan-tools{display:flex;gap:8px}
 .scan-x.on{background:#fff;color:#05070a}
 
+.link-btn{border:0;background:none;color:var(--muted);font-size:.85rem;text-decoration:underline;text-underline-offset:3px;justify-self:start;padding:4px 0}
+.upd{position:fixed;left:50%;transform:translateX(-50%);top:calc(12px + env(safe-area-inset-top,0px));z-index:60;display:flex;align-items:center;gap:12px;
+  background:var(--ink);color:var(--bg);padding:10px 10px 10px 16px;border-radius:16px;font-size:.88rem;font-weight:500;box-shadow:var(--shadow);width:max-content;max-width:calc(100% - 32px);animation:toast .5s var(--spring) both}
+.upd button{border:0;border-radius:10px;background:var(--laser);color:#fff;font-weight:700;padding:8px 12px}
+
 /* Install gate */
 html.gated,html.gated body{overflow:hidden}
 #gate{position:fixed;inset:0;z-index:100;background:var(--bg);overflow-y:auto;display:flex;justify-content:center;
@@ -304,7 +309,7 @@ html.gated,html.gated body{overflow:hidden}
   var ios=/iPad|iPhone|iPod/.test(ua) || (navigator.platform==="MacIntel" && navigator.maxTouchPoints>1);
   var android=/Android/i.test(ua);
   var skipped=false; try{ skipped = sessionStorage.getItem("gm-skip-install")==="1"; }catch(e){}
-  if(standalone || framed || skipped || !(ios||android)) return;
+  if(standalone || framed || skipped || !(ios||android) || /^#reset=/.test(location.hash)) return;
 
   var inApp=/FBAN|FBAV|FB_IAB|Instagram|LinkedInApp|Snapchat|Line\/|Twitter|TikTok|musical_ly|GSA\//i.test(ua) || (android && /; wv\)/.test(ua));
   var browser = ios ? (/CriOS/.test(ua)?"chrome":/FxiOS/.test(ua)?"firefox":/EdgiOS/.test(ua)?"edge":/OPiOS|OPT\//.test(ua)?"opera":"safari")
@@ -415,10 +420,15 @@ html.gated,html.gated body{overflow:hidden}
 })();
 </script>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
-<script src="https://unpkg.com/htm@3.1.1/dist/htm.umd.js"></script>
-<script src="https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js"></script>
+<!-- Libraries: copies hosted with the app (vendor/, filled by server/deploy-app.sh), CDN only as a fallback -->
+<script src="vendor/react.production.min.js"></script>
+<script>window.React||document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"><\/script>')</script>
+<script src="vendor/react-dom.production.min.js"></script>
+<script>window.ReactDOM||document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"><\/script>')</script>
+<script src="vendor/htm.umd.js"></script>
+<script>window.htm||document.write('<script src="https://unpkg.com/htm@3.1.1/dist/htm.umd.js"><\/script>')</script>
+<script src="vendor/zxing.min.js"></script>
+<script>window.ZXing||document.write('<script src="https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js"><\/script>')</script>
 <script>
 const {useState,useEffect,useMemo,useRef} = React;
 const html = htm.bind(React.createElement);
@@ -632,7 +642,13 @@ const SYNC_COLOR={local:"var(--muted)",connecting:"var(--warn)",live:"var(--ok)"
 function SyncSheet({store,onClose}){
   const {pb,sync,pending,login,logout,resync}=store;
   const [url,setUrl]=useState(pb?pb.url:DEFAULT_SERVER); const [email,setEmail]=useState(pb?pb.email:""); const [pw,setPw]=useState("");
-  const [err,setErr]=useState(""); const [busy,setBusy]=useState(false);
+  const [err,setErr]=useState(""); const [busy,setBusy]=useState(false); const [info,setInfo]=useState("");
+  const forgot=async()=>{ setErr(""); setInfo("");
+    if(!email.trim()){ setErr("Saisissez d'abord votre e-mail."); return; }
+    let base=url.trim().replace(/\/+$/,""); if(!/^https?:\/\//.test(base)) base="https://"+base;
+    try{ await pbReq({url:base},"/api/collections/users/request-password-reset",{method:"POST",body:JSON.stringify({email:email.trim()})});
+      setInfo("Si ce compte existe, un e-mail vient d'être envoyé avec un lien pour choisir un nouveau mot de passe."); buzz(15); }
+    catch(x){ setErr(x.status?"L'envoi a échoué : le serveur n'a pas encore de messagerie configurée. Demandez à l'administrateur.":"Serveur injoignable."); } };
   const submit=async(e)=>{ e.preventDefault(); setErr(""); setBusy(true);
     try{ await login(url,email,pw); setPw(""); buzz(15); }catch(x){ setErr(x.message); buzz([30,60,30]); } finally{ setBusy(false); } };
   const connected = pb && sync!=="error";
@@ -649,10 +665,36 @@ function SyncSheet({store,onClose}){
         <label class="field">E-mail<input id="pb-email" type="email" autocomplete="username" autocapitalize="off" required value=${email} onChange=${e=>setEmail(e.target.value)} /></label>
         <label class="field">Mot de passe<input id="pb-pw" type="password" autocomplete="current-password" required value=${pw} onChange=${e=>setPw(e.target.value)} /></label>
         ${err && html`<p class="form-err" role="alert">${err}</p>`}
+        ${info && html`<p class="hint" role="status">${info}</p>`}
         <div class="actions">
           ${pb && html`<button type="button" class="btn del press" onClick=${()=>logout()}>Oublier</button>`}
           <button class="btn main press" type="submit" disabled=${busy}>${busy?"Connexion…":"Se connecter"}</button></div>
+        <button type="button" class="link-btn" onClick=${forgot}>Mot de passe oublié ?</button>
         <p class="hint">Le stock déjà présent sur ce téléphone est envoyé sur le serveur à la connexion.</p>
+      </form>`}
+  `}<//>`;
+}
+
+/* ---------- New password, opened from the reset e-mail ---------- */
+function ResetSheet({token,onDone}){
+  const [pw,setPw]=useState(""), [pw2,setPw2]=useState(""), [err,setErr]=useState(""), [ok,setOk]=useState(false), [busy,setBusy]=useState(false);
+  const base=(lsGet(PB_KEY,null)||{}).url||DEFAULT_SERVER;
+  const submit=async(e)=>{ e.preventDefault(); setErr("");
+    if(pw.length<8){ setErr("8 caractères minimum."); return; }
+    if(pw!==pw2){ setErr("Les deux mots de passe ne sont pas identiques."); return; }
+    setBusy(true);
+    try{ await pbReq({url:base},"/api/collections/users/confirm-password-reset",{method:"POST",body:JSON.stringify({token,password:pw,passwordConfirm:pw2})}); setOk(true); buzz(15); }
+    catch(x){ setErr(x.status?"Ce lien a expiré ou a déjà servi. Redemandez un e-mail depuis l'app.":"Serveur injoignable."); }
+    finally{ setBusy(false); } };
+  return html`<${Sheet} label="Nouveau mot de passe" onClose=${onDone}>${(close)=>html`
+    <h2>Nouveau mot de passe</h2>
+    ${ok ? html`<p class="hint">C'est fait. Ouvrez Garde-manger depuis votre écran d'accueil et connectez-vous avec ce nouveau mot de passe (bouton nuage).</p>
+        <div class="actions"><button class="btn main press" onClick=${close}>Fermer</button></div>`
+    : html`<form class="form" onSubmit=${submit}>
+        <label class="field">Nouveau mot de passe<input id="rs-pw" type="password" autocomplete="new-password" required value=${pw} onChange=${e=>setPw(e.target.value)} /></label>
+        <label class="field">Confirmer<input id="rs-pw2" type="password" autocomplete="new-password" required value=${pw2} onChange=${e=>setPw2(e.target.value)} /></label>
+        ${err && html`<p class="form-err" role="alert">${err}</p>`}
+        <div class="actions"><button class="btn main press" type="submit" disabled=${busy}>${busy?"Enregistrement…":"Enregistrer"}</button></div>
       </form>`}
   `}<//>`;
 }
@@ -705,11 +747,45 @@ function classify(text){
   return {name:text.slice(0,80),raw:text};
 }
 
+const placeholderName=(code)=>`Produit ${code}`;
+const MISS_KEY="gm-lookup-miss";
+// Items scanned without network (or before a product existed in the database): retry quietly later
+async function completeMissing(items,put){
+  if(!navigator.onLine) return 0;
+  const miss=lsGet(MISS_KEY,{}), now=Date.now(); let done=0;
+  const todo=items.filter(i=>i.code && /^\d{8,14}$/.test(i.code) && !i.image && !i.brand && !(miss[i.code]>now-7*864e5)).slice(0,12);
+  for(const it of todo){
+    const r=await lookup(it.code);
+    if(r.offline) break;
+    if(!r.found){ miss[it.code]=now; continue; }
+    put({...it, name: (!it.name||it.name===placeholderName(it.code)) ? (r.name||it.name) : it.name,
+      brand:it.brand||r.brand, image:r.image||"", nutri:it.nutri||r.nutri, nova:it.nova||r.nova, eco:it.eco||r.eco});
+    done++;
+  }
+  lsSet(MISS_KEY,miss); return done;
+}
+
 /* ---------- Barcode detection ----------
    1. native BarcodeDetector (Android Chrome), 2. ZXing-C++ in WebAssembly (iPhone & the rest),
    3. ZXing JS as last resort. */
 const SCAN_FORMATS=["ean_13","ean_8","upc_a","upc_e","qr_code","code_128","data_matrix"];
 let detectorP=null, zx=null;
+const loadScript=(src)=>new Promise((ok,ko)=>{ const el=document.createElement("script"); el.src=src; el.onload=ok; el.onerror=ko; document.head.appendChild(el); });
+async function wasmDetectorClass(){
+  // 1. copy hosted with the app (script + .wasm), 2. jsDelivr
+  try{
+    if(!window.BarcodeDetectionAPI) await loadScript("vendor/barcode-detector.iife.js");
+    const api=window.BarcodeDetectionAPI;
+    if(api && api.BarcodeDetector){
+      const wasm=new URL("vendor/zxing_reader.wasm",location.href).href;
+      const ok=await fetch(wasm,{method:"HEAD"}).then(r=>r.ok&&/wasm/.test(r.headers.get("content-type")||"")).catch(()=>false);
+      if(ok && api.prepareZXingModule) api.prepareZXingModule({overrides:{locateFile:(path,prefix)=>path.endsWith(".wasm")?wasm:prefix+path}});
+      return api.BarcodeDetector;
+    }
+  }catch(e){}
+  const m=await import("https://fastly.jsdelivr.net/npm/barcode-detector@3.1.3/dist/es/ponyfill.min.js");
+  return m.BarcodeDetector;
+}
 function getDetector(){
   if(detectorP) return detectorP;
   detectorP=(async()=>{
@@ -718,8 +794,8 @@ function getDetector(){
         if(f.includes("ean_13")) return new BarcodeDetector({formats:f}); }catch(e){}
     }
     try{
-      const m=await import("https://fastly.jsdelivr.net/npm/barcode-detector@3.1.3/dist/es/ponyfill.min.js");
-      const d=new m.BarcodeDetector({formats:SCAN_FORMATS});
+      const BD=await wasmDetectorClass();
+      const d=new BD({formats:SCAN_FORMATS});
       try{ const c=document.createElement("canvas"); c.width=c.height=16; await d.detect(c); }catch(e){} // loads the wasm now
       return d;
     }catch(e){ return null; }
@@ -914,10 +990,11 @@ function Editor({initial,scanCount,onSave,onDelete,onClose}){
   return html`<${Sheet} label="Article" onClose=${onClose}>${(close)=>html`
     ${initial.scanned && html`<${Ticket} p=${initial} count=${scanCount}/>`}
     <h2>${isNew?(initial.scanned?"Ranger cet article":"Nouvel article"):"Modifier"}</h2>
-    <form class="form" onSubmit=${e=>{e.preventDefault(); if(!f.name.trim()) return;
+    <form class="form" onSubmit=${e=>{e.preventDefault(); if(!f.name.trim()&&!f.code) return;
       const {found,hint,scanned,raw,loading,offline,source,...clean}=f;
-      onSave({...clean,name:f.name.trim(),qty:Math.max(0,Number(f.qty)||0),id:f.id||uid(),addedAt:f.addedAt||Date.now()}); buzz(15); close();}}>
-      <label class="field">Produit<input id="f-name" required value=${f.name} onChange=${set("name")} placeholder=${initial.loading?"Recherche en cours…":"Ex. Riz basmati"} autoComplete="off" /></label>
+      onSave({...clean,name:f.name.trim()||placeholderName(f.code),qty:Math.max(0,Number(f.qty)||0),id:f.id||uid(),addedAt:f.addedAt||Date.now()}); buzz(15); close();}}>
+      <label class="field">Produit<input id="f-name" required=${!f.code} value=${f.name} onChange=${set("name")} placeholder=${initial.loading?"Recherche en cours…":f.code?"Laisser vide : complété plus tard":"Ex. Riz basmati"} autoComplete="off" /></label>
+      ${initial.offline && html`<p class="hint">Pas de réseau : enregistrez l'article, sa fiche sera complétée automatiquement au retour du réseau.</p>`}
       <label class="field">Marque<input id="f-brand" value=${f.brand} onChange=${set("brand")} placeholder="Facultatif" autoComplete="off" /></label>
       <div class="field">Rangé où ?
         <div class="places" role="group" aria-label="Emplacement">
@@ -979,6 +1056,19 @@ function App(){
   const [scan,setScan]=useState(false); const [edit,setEdit]=useState(null);
   const [toast,setToast]=useState(null);
   const [scanCount,setScanCount]=useState(()=>{ try{ return +localStorage.getItem("gm-scans")||0; }catch(e){ return 0; } });
+  const [resetToken,setResetToken]=useState(()=>{ const m=location.hash.match(/^#reset=([\w.\-]+)/); return m?m[1]:null; });
+  const closeReset=()=>{ setResetToken(null); try{ history.replaceState(null,"",location.pathname+location.search); }catch(e){} };
+
+  // scans saved without network: complete their product sheet once the network is back
+  const itemsNow=useRef(items); itemsNow.current=items;
+  useEffect(()=>{ let running=false;
+    const run=async()=>{ if(running) return; running=true;
+      try{ const n=await completeMissing(itemsNow.current,put); if(n>0) flash(`${n} fiche${n>1?"s":""} produit complétée${n>1?"s":""}`); }
+      catch(e){} finally{ running=false; } };
+    const t=setTimeout(run,3000); const vis=()=>{ if(document.visibilityState==="visible") run(); };
+    addEventListener("online",run); document.addEventListener("visibilitychange",vis);
+    return ()=>{ clearTimeout(t); removeEventListener("online",run); document.removeEventListener("visibilitychange",vis); };
+  },[]);
 
   const stock=items.filter(i=>(Number(i.qty)||0)>0);
   const courses=items.filter(i=>(Number(i.qty)||0)<=0);
@@ -1068,6 +1158,7 @@ function App(){
       </div>
     </nav>
 
+    ${resetToken && html`<${ResetSheet} token=${resetToken} onDone=${closeReset} />`}
     ${syncOpen && html`<${SyncSheet} store=${store} onClose=${()=>setSyncOpen(false)} />`}
     ${scan && html`<${Scanner} onResult=${onScanned} onClose=${()=>setScan(false)} />`}
     ${edit && html`<${Editor} key=${edit.id||"new"+scanCount} initial=${edit} scanCount=${scanCount} onClose=${()=>setEdit(null)}
@@ -1078,7 +1169,24 @@ function App(){
 ReactDOM.createRoot(document.getElementById("app")).render(html`<${App}/>`);
 </script>
 <script>
-if("serviceWorker" in navigator && location.protocol==="https:"){ addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{})); }
+if("serviceWorker" in navigator && location.protocol==="https:"){
+  addEventListener("load",function(){
+    var hadController=!!navigator.serviceWorker.controller, shown=false;
+    navigator.serviceWorker.register("sw.js").then(function(reg){
+      var check=function(){ reg.update().catch(function(){}); };
+      document.addEventListener("visibilitychange",function(){ if(document.visibilityState==="visible") check(); });
+      setInterval(check,30*60*1000);
+    }).catch(function(){});
+    // a new version took over: offer a reload instead of silently running old code
+    navigator.serviceWorker.addEventListener("controllerchange",function(){
+      if(!hadController||shown) return; shown=true;
+      var b=document.createElement("div"); b.className="upd"; b.setAttribute("role","status");
+      b.innerHTML='<span>Nouvelle version de Garde-manger</span><button type="button">Recharger</button>';
+      b.querySelector("button").onclick=function(){ location.reload(); };
+      document.body.appendChild(b);
+    });
+  });
+}
 </script>
 </body>
 </html>

@@ -76,6 +76,14 @@ Dans l'app, bouton **nuage** en haut → adresse `https://stock.mondomaine.fr` +
 - **Sessions de 90 jours**, renouvelées à chaque ouverture de l'app.
 - **Limiteur de requêtes** activé, avec la vraie IP du client derrière le reverse proxy.
 
+- **Bibliothèques hébergées avec l'app** : `deploy-app.sh` télécharge React, htm, ZXing, barcode-detector et le moteur WebAssembly dans `pb_public/vendor/` (versions figées). Les CDN ne servent plus que de secours.
+- **Mises à jour visibles** : chaque déploiement change le service worker, et l'app affiche « Nouvelle version · Recharger ».
+- **Scans hors ligne** : un article scanné sans réseau peut être enregistré sans nom ; sa fiche (nom, marque, photo, scores) est complétée automatiquement au retour du réseau.
+
+### Mot de passe oublié
+
+Dans l'app, bouton nuage → « Mot de passe oublié ? ». Il faut une messagerie configurée dans PocketBase : tableau de bord (réseau local) → **Settings → Mail settings** → activer SMTP (ex. Gmail avec un mot de passe d'application, Brevo, OVH…), puis « Send test email ». L'e-mail, en français, contient un lien qui ouvre l'app pour choisir le nouveau mot de passe. L'adresse de l'app est réglée dans **Settings → Application → Application URL** (`https://stock.quipaie.com` par défaut).
+
 Changer le mot de passe admin :
 
 ```bash
