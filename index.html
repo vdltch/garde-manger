@@ -248,6 +248,30 @@ h1{font-family:var(--f-display);font-weight:800;font-size:clamp(1.75rem,8vw,2.3r
   background:var(--ink);color:var(--bg);padding:10px 10px 10px 16px;border-radius:16px;font-size:.88rem;font-weight:500;box-shadow:var(--shadow);width:max-content;max-width:calc(100% - 32px);animation:toast .5s var(--spring) both}
 .upd button{border:0;border-radius:10px;background:var(--laser);color:#fff;font-weight:700;padding:8px 12px}
 
+.lot{font-family:var(--f-mono);font-size:.6rem;letter-spacing:.04em;border:1px solid var(--line);border-radius:6px;padding:1px 6px;color:var(--ink)}
+.card.course{grid-template-columns:auto 1fr auto auto;gap:8px}
+.check{width:40px;height:40px;border-radius:13px;border:2px solid color-mix(in srgb,var(--c) 60%,var(--line));background:var(--surface);display:grid;place-items:center;color:#fff;transition:background .25s,border-color .25s}
+.check svg{width:22px;height:22px;animation:pop .4s var(--spring)}
+.card.done .check{background:var(--ok);border-color:var(--ok)}
+.card.done .name{text-decoration:line-through;color:var(--muted)}
+.card.done{opacity:.72}
+.step.sm button{width:30px;height:30px}.step.sm .num{min-width:2.2em;height:30px}
+.step button:disabled{opacity:.3}
+.list-add{display:flex;gap:8px;margin-top:16px}
+.list-add input{flex:1;min-width:0;border:1.5px solid var(--line);background:var(--surface);border-radius:16px;padding:13px 14px;font-size:1rem}
+.list-add input:focus{outline:none;border-color:var(--ink)}
+.list-add button{width:50px;border:0;border-radius:16px;background:var(--ink);color:var(--bg);display:grid;place-items:center}
+.list-add svg{width:22px;height:22px}
+.store-cart{width:100%;margin-top:12px;border:0;border-radius:16px;padding:14px;background:var(--ok);color:#fff;font-weight:700;font-size:.98rem;display:flex;align-items:center;justify-content:center;gap:8px;animation:rise .5s var(--spring) both}
+.store-cart svg{width:20px;height:20px}
+.btn.soft{background:var(--surface);color:var(--ink);border:1.5px solid var(--line);margin-top:10px;width:100%}
+.btn.soft svg{width:20px;height:20px}
+.scan-chip{height:42px;border-radius:14px;border:0;background:rgba(255,255,255,.12);color:#fff;font-weight:700;font-size:.85rem;padding:0 12px;display:flex;align-items:center;gap:6px}
+.scan-chip svg{width:18px;height:18px}
+.scan-chip.on{background:var(--laser)}
+.burst-log{list-style:none;margin:14px auto 10px;padding:0;display:grid;gap:6px;width:100%;max-width:360px;min-height:2.8em}
+.burst-log li{background:rgba(255,255,255,.1);border-radius:12px;padding:8px 12px;font-size:.9rem;animation:rise .4s var(--spring) both;overflow-wrap:anywhere}
+
 /* Install gate */
 html.gated,html.gated body{overflow:hidden}
 #gate{position:fixed;inset:0;z-index:100;background:var(--bg);overflow-y:auto;display:flex;justify-content:center;
@@ -498,11 +522,11 @@ function loadLocal(){ return lsGet(LS_KEY,null); }
 function saveLocal(items){ lsSet(LS_KEY,items); }
 const DEFAULT_SERVER = (location.protocol==="https:" && !/github\.io$/.test(location.hostname)) ? location.origin : "https://stock.quipaie.com"; // serveur du foyer, pré-rempli dans l'écran de connexion
 const PB_KEY="gm-pocketbase", Q_KEY="gm-sync-queue";
-const PB_FIELDS=["name","brand","code","qty","unit","location","expiry","addedAt","image","nutri","nova","eco"];
-const PB_NUMBERS=["qty","addedAt","nova"];
+const PB_FIELDS=["name","brand","code","qty","unit","location","expiry","addedAt","image","nutri","nova","eco","toBuy","inCart"];
+const PB_NUMBERS=["qty","addedAt","nova","toBuy"];
 const isPbId=(id)=>/^[a-z0-9]{15}$/.test(id||"");
-const toRec=(it)=>{ const r={}; PB_FIELDS.forEach(f=>{ r[f]= it[f]!=null ? it[f] : (PB_NUMBERS.includes(f)?0:""); }); PB_NUMBERS.forEach(f=>{ r[f]=Number(r[f])||0; }); return r; };
-const fromRec=(r)=>{ const it={id:r.id}; PB_FIELDS.forEach(f=>{ it[f]=r[f]; }); PB_NUMBERS.forEach(f=>{ it[f]=Number(it[f])||0; }); FIELD_STR.forEach(f=>{ if(it[f]==null) it[f]=""; }); return it; };
+const toRec=(it)=>{ const r={}; PB_FIELDS.forEach(f=>{ r[f]= it[f]!=null ? it[f] : (PB_NUMBERS.includes(f)?0:""); }); PB_NUMBERS.forEach(f=>{ r[f]=Number(r[f])||0; }); r.inCart=!!it.inCart; return r; };
+const fromRec=(r)=>{ const it={id:r.id}; PB_FIELDS.forEach(f=>{ it[f]=r[f]; }); PB_NUMBERS.forEach(f=>{ it[f]=Number(it[f])||0; }); FIELD_STR.forEach(f=>{ if(it[f]==null) it[f]=""; }); it.inCart=!!it.inCart; return it; };
 const FIELD_STR=["image","nutri","eco"];
 
 function pbReq(cfg,path,opt={}){
@@ -649,6 +673,11 @@ function SyncSheet({store,onClose}){
     try{ await pbReq({url:base},"/api/collections/users/request-password-reset",{method:"POST",body:JSON.stringify({email:email.trim()})});
       setInfo("Si ce compte existe, un e-mail vient d'être envoyé avec un lien pour choisir un nouveau mot de passe."); buzz(15); }
     catch(x){ setErr(x.status?"L'envoi a échoué : le serveur n'a pas encore de messagerie configurée. Demandez à l'administrateur.":"Serveur injoignable."); } };
+  const testNotif=async()=>{ setErr(""); setInfo(""); setBusy(true);
+    try{ const r=await pbReq(pb,"/api/garde-manger/notify-test",{method:"POST"});
+      setInfo(r&&r.count?`Notification envoyée (${r.count} produit${r.count>1?"s":""} à finir).`:"Notification envoyée : rien ne périme bientôt."); buzz(15); }
+    catch(x){ setErr(x.status?x.message:"Serveur injoignable."); }
+    finally{ setBusy(false); } };
   const submit=async(e)=>{ e.preventDefault(); setErr(""); setBusy(true);
     try{ await login(url,email,pw); setPw(""); buzz(15); }catch(x){ setErr(x.message); buzz([30,60,30]); } finally{ setBusy(false); } };
   const connected = pb && sync!=="error";
@@ -659,7 +688,10 @@ function SyncSheet({store,onClose}){
       ${pending>0 && html`<span>${pending} modification${pending>1?"s":""} en attente d'envoi</span>`}</div></div>
     ${connected ? html`<div class="actions">
         <button type="button" class="btn del press" onClick=${()=>{logout(); buzz(10);}}>Se déconnecter</button>
-        <button type="button" class="btn main press" onClick=${()=>{resync(); buzz(10);}}>Synchroniser</button></div>`
+        <button type="button" class="btn main press" onClick=${()=>{resync(); buzz(10);}}>Synchroniser</button></div>
+        <button type="button" class="btn soft press" onClick=${testNotif} disabled=${busy}>${I.bell}${busy?"Envoi…":"Tester les notifications"}</button>
+        ${info && html`<p class="hint" role="status">${info}</p>`}
+        ${err && html`<p class="form-err" role="alert">${err}</p>`}`
     : html`<form class="form" onSubmit=${submit}>
         <label class="field">Adresse du serveur<input id="pb-url" inputmode="url" autocomplete="url" autocapitalize="off" spellcheck="false" placeholder="https://stock.mondomaine.fr" required value=${url} onChange=${e=>setUrl(e.target.value)} /></label>
         <label class="field">E-mail<input id="pb-email" type="email" autocomplete="username" autocapitalize="off" required value=${email} onChange=${e=>setEmail(e.target.value)} /></label>
@@ -718,8 +750,48 @@ async function fetchJSON(url,ms){
   try{ const r=await fetch(url,{signal:ac.signal,headers:{Accept:"application/json"}}); return r.ok ? await r.json() : {status:0}; }
   finally{ clearTimeout(t); }
 }
+// Typical shelf life after purchase, by Open Food Facts category (first match wins). 0 = no suggestion.
+const SHELF=[[/frozen|surgel/,180],[/fresh-fish|fishes|seafood|smoked-salmon|shellfish/,3],[/fresh-meats|poultr|ground-meat|minced|steaks/,3],
+  [/ready-meals|fresh-salads|prepared-salads/,4],[/hams|charcuter|sausages|bacons/,7],[/fresh-pasta|fresh-filled-pasta/,14],
+  [/yogurts|dairy-desserts|fermented-milk|creams/,21],[/cheeses/,21],[/uht/,90],[/milks/,7],[/butters/,60],[/eggs/,28],
+  [/breads|viennoiseries/,4],[/fresh-fruits|fresh-vegetables|^en:fruits|^en:vegetables/,7],[/fruit-juices|fresh-juices/,10],
+  [/wines|beers|ciders|spirits|alcoholic/,0],[/canned|conserves/,730],[/pastas|rices|cereals|flours|sugars|legumes|dried/,365],
+  [/coffees|teas|herbal-teas/,365],[/chocolates|biscuits|cakes|confectioneries|snacks/,150],[/sauces|condiments|spreads|jams/,180],[/beverages|waters|sodas/,180]];
+const guessShelf=(tags)=>{ const t=(tags||[]).join(" "); for(const [re,d] of SHELF){ if(re.test(t)) return d; } return 0; };
+
+/* Household product catalog on the PocketBase server: a product found or completed once is known by every phone */
+const pbCfg=()=>{ const c=lsGet(PB_KEY,null); return c&&c.token?c:null; };
+const CATALOG_KEYS=["name","brand","hint","location","image","nutri","nova","eco","shelfDays","source"];
+async function catalogFind(code){
+  const c=pbCfg(); if(!c||!/^[\w-]{4,32}$/.test(code)) return null;
+  const j=await pbReq(c,`/api/collections/products/records?perPage=1&skipTotal=1&filter=${encodeURIComponent(`code="${code}"`)}`);
+  return (j&&j.items&&j.items[0])||null;
+}
+async function catalogGet(code){
+  try{ const r=await catalogFind(code); if(!r||!r.name) return null;
+    return {found:true,source:"CATALOGUE DU FOYER",name:r.name,brand:r.brand||"",hint:r.hint||"",image:r.image||"",nutri:r.nutri||"",eco:r.eco||"",
+      nova:Number(r.nova)||0,location:r.location||"",shelfDays:Number(r.shelfDays)||0}; }
+  catch(e){ return null; }
+}
+async function catalogSave(code,data){
+  if(!code) return;
+  const body={code}; CATALOG_KEYS.forEach(k=>{ if(data[k]!=null&&data[k]!=="") body[k]=data[k]; });
+  const cache=lsGet(OFF_CACHE,{}); cache[code]={...(cache[code]||{}),...body,found:true,source:cache[code]&&cache[code].source||"CATALOGUE DU FOYER"}; lsSet(OFF_CACHE,cache);
+  const c=pbCfg(); if(!c) return;
+  try{ const r=await catalogFind(code);
+    if(r) await pbReq(c,`/api/collections/products/records/${r.id}`,{method:"PATCH",body:JSON.stringify(body)});
+    else await pbReq(c,`/api/collections/products/records`,{method:"POST",body:JSON.stringify(body)}); }
+  catch(e){}
+}
 async function lookup(code){
-  const cache=lsGet(OFF_CACHE,{}); if(cache[code]) return cache[code];
+  const local=lsGet(OFF_CACHE,{})[code]; if(local&&local.name) return local;
+  const fromHome=await catalogGet(code); if(fromHome){ const cache=lsGet(OFF_CACHE,{}); cache[code]=fromHome; lsSet(OFF_CACHE,cache); return fromHome; }
+  const r=await lookupOFF(code);
+  if(r.found) catalogSave(code,r);
+  return r;
+}
+async function lookupOFF(code){
+  const cache=lsGet(OFF_CACHE,{});
   const codes=[code]; if(code.length===12) codes.push("0"+code); if(code.length===13&&code[0]==="0") codes.push(code.slice(1));
   for(const [host,source] of OFF_HOSTS){
     for(const c of codes){
@@ -729,7 +801,7 @@ async function lookup(code){
       const name=(p.product_name_fr||p.product_name||p.generic_name_fr||"").trim(), brand=(p.brands||"").split(",")[0].trim();
       if(!name&&!brand) continue;
       const out={found:true,source,name,brand,hint:p.quantity||"",image:p.image_front_small_url||p.image_small_url||"",
-        nutri:grade(p.nutriscore_grade),eco:grade(p.environmental_score_grade||p.ecoscore_grade),nova:Number(p.nova_group)||0,location:guessPlace(p.categories_tags)};
+        nutri:grade(p.nutriscore_grade),eco:grade(p.environmental_score_grade||p.ecoscore_grade),nova:Number(p.nova_group)||0,location:guessPlace(p.categories_tags),shelfDays:guessShelf(p.categories_tags)};
       const keys=Object.keys(cache); if(keys.length>400) delete cache[keys[0]];
       cache[code]=out; lsSet(OFF_CACHE,cache); return out;
     }
@@ -759,7 +831,8 @@ async function completeMissing(items,put){
     if(r.offline) break;
     if(!r.found){ miss[it.code]=now; continue; }
     put({...it, name: (!it.name||it.name===placeholderName(it.code)) ? (r.name||it.name) : it.name,
-      brand:it.brand||r.brand, image:r.image||"", nutri:it.nutri||r.nutri, nova:it.nova||r.nova, eco:it.eco||r.eco});
+      brand:it.brand||r.brand, image:r.image||"", nutri:it.nutri||r.nutri, nova:it.nova||r.nova, eco:it.eco||r.eco,
+      expiry:it.expiry||(r.shelfDays&&(Number(it.qty)||0)>0?iso(r.shelfDays):"")});
     done++;
   }
   lsSet(MISS_KEY,miss); return done;
@@ -843,6 +916,9 @@ const I = {
   shelf: html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="3"/><path d="M4 10h16M8 6.5v1M8 13v2"/></svg>`,
   clock: html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2.5h6"/></svg>`,
   cart: html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h2.2l2.3 11h10.8l2-8H6.3"/><circle cx="9.5" cy="19.5" r="1.3"/><circle cx="17" cy="19.5" r="1.3"/></svg>`,
+  check: html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>`,
+  burst: html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7v10M8 7v10M12 7v10M16 7v10M20 7v10"/><path d="M2 4h20M2 20h20" stroke-width="1.6"/></svg>`,
+  bell: html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></svg>`,
   pen: html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>`,
   cloud: html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18.5a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 9.5a4.5 4.5 0 0 1-.5 9z"/><path d="M12 16v-5M9.5 13.5 12 11l2.5 2.5"/></svg>`,
   torch: html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2h8v4l-2 3v13h-4V9L8 6z"/><path d="M12 13v2"/></svg>`,
@@ -898,12 +974,23 @@ function Ticket({p,count}){
 }
 
 /* ---------- Scanner ---------- */
-function Scanner({onResult,onClose}){
-  const video=useRef(null), stream=useRef(null), done=useRef(false), timer=useRef(0), last=useRef({v:"",n:0});
+function Scanner({onResult,onBurst,onClose}){
+  const video=useRef(null), stream=useRef(null), done=useRef(false), timer=useRef(0), last=useRef({v:"",n:0}), lastHit=useRef({v:"",t:0});
+  const [burst,setBurst]=useState(()=>lsGet("gm-burst",false)); const burstRef=useRef(burst); burstRef.current=burst;
+  const cb=useRef({}); cb.current={onResult,onBurst};
+  const [log,setLog]=useState([]); const [flashK,setFlashK]=useState(0);
   const [mode,setMode]=useState("starting"); const [err,setErr]=useState(""); const [typed,setTyped]=useState("");
   const [closing,setClosing]=useState(false); const [torch,setTorch]=useState(null); const [slow,setSlow]=useState(false);
   const stop=()=>{ done.current=true; clearTimeout(timer.current); if(stream.current) stream.current.getTracks().forEach(t=>t.stop()); };
-  const finish=(text)=>{ if(done.current) return; stop(); setMode("found"); scanBeep(); buzz(70); setTimeout(()=>onResult(text),REDUCED?0:450); };
+  // returns true when scanning stops (single scan), false in burst mode (keeps scanning)
+  const finish=(text)=>{ if(done.current) return true;
+    if(burstRef.current){
+      const now=Date.now(); if(lastHit.current.v===text && now-lastHit.current.t<1800) return false; // same item still in view
+      lastHit.current={v:text,t:now}; scanBeep(); buzz(50); setFlashK(k=>k+1);
+      const label=cb.current.onBurst(text); setLog(l=>[{k:now,label},...l].slice(0,4)); return false;
+    }
+    stop(); setMode("found"); scanBeep(); buzz(70); setTimeout(()=>cb.current.onResult(text),REDUCED?0:450); return true; };
+  const toggleBurst=()=>{ const v=!burstRef.current; setBurst(v); lsSet("gm-burst",v); buzz(8); };
   const close=()=>{ stop(); setClosing(true); setTimeout(onClose,REDUCED?0:200); };
   useEffect(()=>{
     let tick=0; const canvas=document.createElement("canvas"); const ctx=canvas.getContext("2d",{willReadFrequently:true});
@@ -919,8 +1006,8 @@ function Scanner({onResult,onClose}){
         const hits=await detectIn(canvas);
         for(const h of hits){
           const val=(h.rawValue||"").trim(); if(!val) continue;
-          if(isRetail(h)){ if(validGtin(val)) return finish(val); continue; }
-          if(last.current.v===val){ if(++last.current.n>=2) return finish(val); } else last.current={v:val,n:1};
+          if(isRetail(h)){ if(validGtin(val)){ if(finish(val)) return; break; } continue; }
+          if(last.current.v===val){ if(++last.current.n>=2){ if(finish(val)) return; break; } } else last.current={v:val,n:1};
         }
         if(!slow && Date.now()-t0>7000) setSlow(true);
       }
@@ -944,13 +1031,14 @@ function Scanner({onResult,onClose}){
   const toggleTorch=async()=>{ const t=stream.current&&stream.current.getVideoTracks()[0]; if(!t) return;
     try{ await t.applyConstraints({advanced:[{torch:!torch}]}); setTorch(!torch); buzz(8); }catch(e){} };
   const onPhoto=async(e)=>{ const f=e.target.files[0]; e.target.value=""; if(!f) return; setErr(""); setMode("reading");
-    try{ finish(await decodeImageFile(f)); }
+    try{ const v=await decodeImageFile(f); finish(v); if(burstRef.current) setMode("photo"); }
     catch(x){ setMode("photo"); buzz([30,60,30]); setErr("Pas de code lisible sur cette photo. Rapprochez-vous, tenez le code bien à plat et évitez les reflets."); } };
   const msg = {starting:"Ouverture de la caméra…", live: slow?"Reculez un peu pour que le code soit net, et évitez les reflets.":"Visez le code-barres, il est lu tout seul.", photo:"Prenez le code en photo : il est lu dès que la photo est prise.", reading:"Lecture du code…", found:"Bip ! Code lu."}[mode];
   const ghost = useMemo(()=>Array.from({length:28},(_,i)=>1+((i*7)%4)),[]);
   return html`<div class=${"scan "+mode+(closing?" out":"")} role="dialog" aria-modal="true" aria-label="Scanner">
     <div class="scan-top"><b>Scanner</b>
       <div class="scan-tools">
+        <button class=${"scan-chip press"+(burst?" on":"")} aria-pressed=${burst} onClick=${toggleBurst}>${I.burst}Rafale</button>
         ${torch!==null && html`<button class=${"scan-x press"+(torch?" on":"")} aria-label=${torch?"Éteindre la lampe":"Allumer la lampe"} aria-pressed=${torch} onClick=${toggleTorch}>${I.torch}</button>`}
         <button class="scan-x press" aria-label="Fermer le scanner" onClick=${close}>${I.close}</button>
       </div></div>
@@ -961,13 +1049,15 @@ function Scanner({onResult,onClose}){
         <span class="corner c1"></span><span class="corner c2"></span><span class="corner c3"></span><span class="corner c4"></span>
         <span class="laser"></span>
         ${mode==="found" && html`<span class="flash"></span>`}
+        ${flashK>0 && html`<span class="flash" key=${"f"+flashK}></span>`}
       </div>
     </div>
-    <p class=${"scan-msg"+(err?" err":"")} aria-live="polite">${err||msg}</p>
+    ${burst && log.length>0 ? html`<ul class="burst-log" aria-live="polite">${log.map((x,i)=>html`<li key=${x.k} style=${{opacity:1-i*0.22}}>${x.label}</li>`)}</ul>`
+      : html`<p class=${"scan-msg"+(err?" err":"")} aria-live="polite">${err||(burst&&mode==="live"?"Mode rafale : scannez les articles les uns après les autres, puis fermez.":msg)}</p>`}
     <div class="scan-cta">
       ${(mode==="photo"||mode==="reading") && html`<label class="cam press">${I.camera} Photographier le code
         <input id="photo" type="file" accept="image/*" capture="environment" onChange=${onPhoto} onClick=${unlockAudio} /></label>`}
-      <form class="typed" onSubmit=${e=>{e.preventDefault(); const v=typed.trim(); if(v) finish(v);}}>
+      <form class="typed" onSubmit=${e=>{e.preventDefault(); const v=typed.trim(); if(v){ finish(v); setTyped(""); }}}>
         <input id="typed-code" inputmode="numeric" autocomplete="off" placeholder="Ou tapez les chiffres sous le code…" value=${typed} onChange=${e=>setTyped(e.target.value)} />
         <button class="press" type="submit">OK</button>
       </form>
@@ -976,23 +1066,27 @@ function Scanner({onResult,onClose}){
 }
 
 /* ---------- Editor ---------- */
-const FILLED=["name","brand","location","image","nutri","nova","eco"];
+const FILLED=["name","brand","location","image","nutri","nova","eco","shelfDays"];
 function Editor({initial,scanCount,onSave,onDelete,onClose}){
   const [f,setF]=useState({qty:1,unit:"pcs",location:"Frigo",expiry:"",name:"",brand:"",code:"",...initial});
   const touched=useRef(new Set());
   const set=(k)=>(e)=>{ touched.current.add(k); setF(v=>({...v,[k]:e.target.value})); };
   // the product lookup finishes after the sheet opened: fill what the person has not typed yet
   useEffect(()=>{ if(initial.loading) return;
-    setF(v=>{ const n={...v}; FILLED.forEach(k=>{ if(!touched.current.has(k) && initial[k]!=null && initial[k]!=="") n[k]=initial[k]; }); return n; });
+    setF(v=>{ const n={...v}; FILLED.forEach(k=>{ if(!touched.current.has(k) && initial[k]!=null && initial[k]!=="") n[k]=initial[k]; });
+      // suggest a date from the product type, until the person picks one
+      if(!initial.id && !touched.current.has("expiry") && !n.expiry && Number(n.shelfDays)>0){ n.expiry=iso(Number(n.shelfDays)); n.suggested=true; }
+      return n; });
   },[initial.loading]);
   const isNew=!initial.id;
   const quick=[["+3 j",3],["+1 sem.",7],["+1 mois",30],["+6 mois",182]];
   return html`<${Sheet} label="Article" onClose=${onClose}>${(close)=>html`
     ${initial.scanned && html`<${Ticket} p=${initial} count=${scanCount}/>`}
-    <h2>${isNew?(initial.scanned?"Ranger cet article":"Nouvel article"):"Modifier"}</h2>
+    <h2>${isNew?(initial.newLot?"Nouveau lot":initial.scanned?"Ranger cet article":"Nouvel article"):"Modifier"}</h2>
+    ${initial.newLot && html`<p class="hint" style=${{marginTop:"-8px",marginBottom:"14px"}}>Même produit, autre date de péremption : il apparaîtra comme un lot séparé.</p>`}
     <form class="form" onSubmit=${e=>{e.preventDefault(); if(!f.name.trim()&&!f.code) return;
-      const {found,hint,scanned,raw,loading,offline,source,...clean}=f;
-      onSave({...clean,name:f.name.trim()||placeholderName(f.code),qty:Math.max(0,Number(f.qty)||0),id:f.id||uid(),addedAt:f.addedAt||Date.now()}); buzz(15); close();}}>
+      const {found,hint,scanned,raw,loading,offline,source,shelfDays,suggested,newLot,...clean}=f;
+      onSave({...clean,name:f.name.trim()||placeholderName(f.code),_learn:isNew&&f.expiry&&!f.suggested?daysLeft(f.expiry):0,qty:Math.max(0,Number(f.qty)||0),id:f.id||uid(),addedAt:f.addedAt||Date.now()}); buzz(15); close();}}>
       <label class="field">Produit<input id="f-name" required=${!f.code} value=${f.name} onChange=${set("name")} placeholder=${initial.loading?"Recherche en cours…":f.code?"Laisser vide : complété plus tard":"Ex. Riz basmati"} autoComplete="off" /></label>
       ${initial.offline && html`<p class="hint">Pas de réseau : enregistrez l'article, sa fiche sera complétée automatiquement au retour du réseau.</p>`}
       <label class="field">Marque<input id="f-brand" value=${f.brand} onChange=${set("brand")} placeholder="Facultatif" autoComplete="off" /></label>
@@ -1005,9 +1099,10 @@ function Editor({initial,scanCount,onSave,onDelete,onClose}){
         <label class="field">Quantité<input id="f-qty" type="number" min="0" step="any" inputmode="decimal" value=${f.qty} onChange=${set("qty")} /></label>
         <label class="field">Unité<select id="f-unit" value=${f.unit} onChange=${set("unit")}>${UNITS.map(u=>html`<option key=${u} value=${u}>${u}</option>`)}</select></label>
       </div>
-      <label class="field">À consommer avant<input id="f-exp" type="date" value=${f.expiry} onChange=${set("expiry")} /></label>
-      <div class="quick">${quick.map(([l,n])=>html`<button type="button" key=${l} class="press" onClick=${()=>setF(v=>({...v,expiry:iso(n)}))}>${l}</button>`)}
-        ${f.expiry && html`<button type="button" class="press" onClick=${()=>setF(v=>({...v,expiry:""}))}>Sans date</button>`}</div>
+      <label class="field">À consommer avant<input id="f-exp" type="date" value=${f.expiry} onChange=${e=>{ set("expiry")(e); setF(v=>({...v,suggested:false})); }} /></label>
+      ${f.suggested && f.expiry && html`<p class="hint">Date suggérée pour ce type de produit (${daysLeft(f.expiry)} j). Vérifiez l'emballage.</p>`}
+      <div class="quick">${quick.map(([l,n])=>html`<button type="button" key=${l} class="press" onClick=${()=>{ touched.current.add("expiry"); setF(v=>({...v,expiry:iso(n),suggested:false})); }}>${l}</button>`)}
+        ${f.expiry && html`<button type="button" class="press" onClick=${()=>{ touched.current.add("expiry"); setF(v=>({...v,expiry:"",suggested:false})); }}>Sans date</button>`}</div>
       <div class="actions">
         ${!isNew && html`<button type="button" class="btn del press" onClick=${()=>{onDelete(f); close();}}>Supprimer</button>`}
         <button class="btn main press" type="submit">${isNew?"Ajouter au stock":"Enregistrer"}</button>
@@ -1019,13 +1114,13 @@ function Editor({initial,scanCount,onSave,onDelete,onClose}){
 const Face=({it})=> it.image
   ? html`<b class="photo"><img src=${it.image} alt="" loading="lazy" referrerpolicy="no-referrer" onError=${e=>{ e.currentTarget.parentNode.classList.remove("photo"); e.currentTarget.replaceWith(document.createTextNode(initials(it.name))); }}/></b>`
   : html`<b>${initials(it.name)}</b>`;
-function StockCard({it,i,onOpen,onStep}){
+function StockCard({it,i,onOpen,onStep,lots}){
   const st=status(it), lab=expLabel(it);
   return html`<div class="card" style=${{"--i":Math.min(i,10),"--c":placeColor(it.location),"--rc":ringColor[st],viewTransitionName:"c-"+it.id}}>
     <div class="ring" style=${{"--p":ringPct(it)}} aria-hidden="true"><${Face} it=${it}/></div>
     <button class="info" onClick=${()=>onOpen(it)}>
       <div class="name">${it.name}</div>
-      <div class="sub">${lab && html`<span class="exp">${lab}</span>`}${it.nutri && html`<span class="ns" style=${{"--sc":NUTRI_C[it.nutri]}}>${it.nutri.toUpperCase()}</span>`}${it.brand && html`<span>${it.brand}</span>`}</div>
+      <div class="sub">${lab && html`<span class="exp">${lab}</span>`}${lots>1 && html`<span class="lot">${lots} lots</span>`}${it.nutri && html`<span class="ns" style=${{"--sc":NUTRI_C[it.nutri]}}>${it.nutri.toUpperCase()}</span>`}${it.brand && html`<span>${it.brand}</span>`}</div>
     </button>
     <div class="step">
       <button class="press" aria-label=${"Retirer un "+it.name} onClick=${()=>onStep(it,-1)}>${I.minus}</button>
@@ -1034,17 +1129,20 @@ function StockCard({it,i,onOpen,onStep}){
     </div>
   </div>`;
 }
-function CourseCard({it,i,onBuy,onRemove,onOpen}){
-  return html`<div class="card" style=${{"--i":Math.min(i,10),"--c":placeColor(it.location),"--rc":"var(--line)",viewTransitionName:"c-"+it.id}}>
-    <div class="ring" style=${{"--p":0}} aria-hidden="true"><${Face} it=${it}/></div>
+function CourseCard({it,i,onToggle,onQty,onRemove,onOpen}){
+  const n=Math.max(1,Number(it.toBuy)||1);
+  return html`<div class=${"card course"+(it.inCart?" done":"")} style=${{"--i":Math.min(i,10),"--c":placeColor(it.location),viewTransitionName:"c-"+it.id}}>
+    <button class="check press" role="checkbox" aria-checked=${!!it.inCart} aria-label=${(it.inCart?"Sortir du panier : ":"Mettre dans le panier : ")+it.name} onClick=${()=>onToggle(it)}>${it.inCart && I.check}</button>
     <button class="info" onClick=${()=>onOpen(it)}>
       <div class="name">${it.name}</div>
       <div class="sub"><span>${it.location}</span>${it.brand && html`<span>${it.brand}</span>`}</div>
     </button>
-    <div style=${{display:"flex",alignItems:"center",gap:"2px"}}>
-      <button class="x-sm press" aria-label=${"Retirer "+it.name+" de la liste"} onClick=${()=>onRemove(it)}>${I.close}</button>
-      <button class="buy press" onClick=${()=>onBuy(it)}>Acheté</button>
+    <div class="step sm">
+      <button class="press" aria-label=${"Un de moins : "+it.name} onClick=${()=>onQty(it,-1)} disabled=${n<=1}>${I.minus}</button>
+      <div class="num"><output key=${n}>×${n}</output></div>
+      <button class="press" aria-label=${"Un de plus : "+it.name} onClick=${()=>onQty(it,1)}>${I.plus}</button>
     </div>
+    <button class="x-sm press" aria-label=${"Retirer de la liste : "+it.name} onClick=${()=>onRemove(it)}>${I.close}</button>
   </div>`;
 }
 
@@ -1072,31 +1170,80 @@ function App(){
 
   const stock=items.filter(i=>(Number(i.qty)||0)>0);
   const courses=items.filter(i=>(Number(i.qty)||0)<=0);
+  const toBuyCount=courses.filter(i=>!i.inCart).length, inCart=courses.filter(i=>i.inCart);
+  const lotCount={}; stock.forEach(i=>{ if(i.code) lotCount[i.code]=(lotCount[i.code]||0)+1; });
+  const [newItem,setNewItem]=useState("");
   const c={ok:0,warn:0,bad:0,none:0}; stock.forEach(i=>c[status(i)]++);
   const watch=c.warn+c.bad;
 
   const match=(i)=>{ const s=q.trim().toLowerCase(); return (place==="Tout"||i.location===place)&&(!s||(i.name+" "+(i.brand||"")+" "+(i.code||"")).toLowerCase().includes(s)); };
-  const sorter=(a,b)=>(a.expiry||"9999").localeCompare(b.expiry||"9999")||a.name.localeCompare(b.name);
+  const sorter= tab==="courses"
+    ? (a,b)=>(!!a.inCart-!!b.inCart)||(a.location||"").localeCompare(b.location||"")||a.name.localeCompare(b.name)
+    : (a,b)=>(a.expiry||"9999").localeCompare(b.expiry||"9999")||a.name.localeCompare(b.name);
   const list = (tab==="soon" ? stock.filter(i=>["warn","bad"].includes(status(i))) : tab==="courses" ? courses : stock).filter(match).sort(sorter);
   const shelves = tab==="stock" ? PLACES.map(p=>[p,list.filter(i=>i.location===p.id)]).filter(s=>s[1].length) : [[null,list]];
 
-  const flash=(msg,undo)=>{ setToast({msg,undo,k:Date.now()}); clearTimeout(window.__t); window.__t=setTimeout(()=>setToast(null),4200); };
+  const flash=(msg,undo,label)=>{ setToast({msg,undo,label:label||"Annuler",k:Date.now()}); clearTimeout(window.__t); window.__t=setTimeout(()=>setToast(null),undo?5500:4200); };
+  const bumpScans=()=>{ setScanCount(n=>{ try{ localStorage.setItem("gm-scans",n+1); }catch(e){} return n+1; }); };
+  const latestLot=(lots)=>lots.slice().sort((a,b)=>(b.addedAt||0)-(a.addedAt||0))[0];
+  const shelfFor=(code)=>{ const c=code&&lsGet(OFF_CACHE,{})[code]; return c&&Number(c.shelfDays)||0; };
+  const newLotOf=(t)=>({code:t.code,name:t.name,brand:t.brand,image:t.image,nutri:t.nutri,nova:t.nova,eco:t.eco,location:t.location,unit:t.unit,qty:1,shelfDays:shelfFor(t.code),newLot:true});
+
+  // shopping list
+  const addToList=(e)=>{ e.preventDefault(); const name=newItem.trim(); if(!name) return;
+    const same=(i)=>i.name.toLowerCase()===name.toLowerCase();
+    const listed=courses.find(same), known=items.find(same);
+    if(listed) vt(()=>put({...listed,inCart:false,toBuy:(Number(listed.toBuy)||1)+(listed.inCart?0:1)}));
+    else if(known) vt(()=>put({...known,id:uid(),qty:0,toBuy:1,inCart:false,expiry:"",addedAt:Date.now()})); // same product, new line on the list
+    else vt(()=>put({id:uid(),name,brand:"",code:"",qty:0,toBuy:1,inCart:false,unit:"pcs",location:"Placard",expiry:"",addedAt:Date.now()}));
+    setNewItem(""); buzz(10); };
+  const toggleCart=(it)=>{ buzz(10); vt(()=>put({...it,inCart:!it.inCart})); };
+  const setToBuy=(it,d)=>{ buzz(6); put({...it,toBuy:Math.max(1,(Number(it.toBuy)||1)+d)}); };
+  const storeCart=()=>{ if(!inCart.length) return; buzz(20);
+    vt(()=>inCart.forEach(it=>{ const sd=shelfFor(it.code);
+      put({...it,qty:(Number(it.qty)||0)+Math.max(1,Number(it.toBuy)||1),toBuy:1,inCart:false,expiry:sd?iso(sd):"",addedAt:Date.now()}); }));
+    flash(`${inCart.length} article${inCart.length>1?"s":""} rangé${inCart.length>1?"s":""} dans le stock`); };
   const step=(it,d)=>{ buzz(8);
     if((Number(it.qty)||0)+d<=0){ vt(()=>bump(it,d)); flash(`${it.name} → liste de courses`,()=>vt(()=>put(it))); }
     else bump(it,d); };
   const remove=(it)=>{ vt(()=>del(it.id)); flash(`${it.name} supprimé`,()=>vt(()=>put(it))); };
-  const buy=(it)=>{ buzz(12); vt(()=>put({...it,qty:1,expiry:""})); flash(`${it.name} remis en stock`); };
   const go=(t)=>{ if(t!==tab){ buzz(6); vt(()=>{ setTab(t); }); window.scrollTo({top:0,behavior:REDUCED?"auto":"smooth"}); } };
 
   const openScan=()=>{ unlockAudio(); buzz(10); setScan(true); };
+  // burst mode: every read is stored at once, product sheets fill in the background
+  const burstN=useRef(0);
+  const onBurst=(text)=>{
+    bumpScans(); burstN.current++;
+    const p=classify(text), all=itemsNow.current;
+    if(!p.code){ const it={id:uid(),name:p.name||"Article",brand:p.brand||"",code:"",qty:Number(p.qty)||1,unit:p.unit||"pcs",location:p.location||"Placard",expiry:p.expiry||"",addedAt:Date.now()};
+      put(it); return `＋ ${it.name}`; }
+    const lots=all.filter(i=>i.code===p.code&&(Number(i.qty)||0)>0);
+    if(lots.length){ const t=latestLot(lots); bump(t,1); return `+1 ${t.name}`; }
+    const listed=all.find(i=>i.code===p.code);
+    const base=listed?{...listed,qty:1,inCart:false,toBuy:1,addedAt:Date.now()}:{id:uid(),code:p.code,name:placeholderName(p.code),brand:"",qty:1,unit:"pcs",location:"Placard",expiry:"",addedAt:Date.now()};
+    put(base);
+    lookup(p.code).then(r=>{ const cur=itemsNow.current.find(x=>x.id===base.id)||base;
+      const sd=Number(r.shelfDays)||0;
+      put({...cur, name:cur.name===placeholderName(p.code)?(r.name||cur.name):cur.name, brand:cur.brand||r.brand||"", image:cur.image||r.image||"",
+        nutri:cur.nutri||r.nutri||"", nova:cur.nova||r.nova||0, eco:cur.eco||r.eco||"", location:listed?cur.location:(r.location||cur.location),
+        expiry:cur.expiry||(sd?iso(sd):"")}); });
+    return listed?`${listed.name} remis en stock`:`Nouveau · ${p.code}`;
+  };
+  const closeScanner=()=>{ setScan(false); const n=burstN.current; burstN.current=0;
+    if(n>0) flash(`${n} article${n>1?"s":""} scanné${n>1?"s":""} en rafale`); };
+
   const onScanned=(text)=>{
-    setScan(false);
-    const n=scanCount+1; setScanCount(n); try{ localStorage.setItem("gm-scans",n); }catch(e){}
+    setScan(false); burstN.current=0; bumpScans();
     const p=classify(text);
     const existing=p.code&&items.find(i=>i.code===p.code);
-    if(existing){ const nq=(Number(existing.qty)||0)+1; vt(()=>bump(existing,1)); flash(`+1 ${existing.name} · ${nq} ${qtyText(existing)||"en stock"}`); return; }
+    const lots=p.code?items.filter(i=>i.code===p.code&&(Number(i.qty)||0)>0):[];
+    if(existing && !lots.length){ // known product, currently on the shopping list: back in stock
+      const sd=shelfFor(p.code); vt(()=>put({...existing,qty:1,inCart:false,toBuy:1,expiry:sd?iso(sd):"",addedAt:Date.now()}));
+      flash(`${existing.name} remis en stock`); return; }
+    if(existing){ const t=latestLot(lots); const nq=(Number(t.qty)||0)+1; vt(()=>bump(t,1));
+      flash(`+1 ${t.name} · ${nq} ${qtyText(t)||"en stock"}`,()=>{ bump(itemsNow.current.find(x=>x.id===t.id)||{...t,qty:nq},-1); setEdit(newLotOf(t)); },"Autre date"); return; }
     if(!p.code){ setEdit({...p,scanned:true}); return; }
-    setEdit({...p,scanned:true,loading:true,location:"Placard"});
+    setEdit({...p,scanned:true,loading:true,location:"Placard",shelfDays:0});
     lookup(p.code).then(r=>setEdit(e=> e&&e.scanned&&e.code===p.code ? {...e,...r,loading:false} : e));
   };
 
@@ -1135,17 +1282,23 @@ function App(){
     </div>
 
 
+    ${tab==="courses" && html`<form class="list-add" onSubmit=${addToList}>
+        <input id="list-add" placeholder="Ajouter à la liste : lait, pain…" autocomplete="off" value=${newItem} onChange=${e=>setNewItem(e.target.value)} aria-label="Article à acheter" />
+        <button class="press" type="submit" aria-label="Ajouter à la liste">${I.plus}</button>
+      </form>`}
+    ${tab==="courses" && inCart.length>0 && html`<button class="store-cart press" onClick=${storeCart}>${I.check} Ranger les ${inCart.length} article${inCart.length>1?"s":""} du panier</button>`}
+
     ${list.length===0 && html`<div class="empty">
       <div class="art">${tab==="courses"?I.cart:tab==="soon"?I.clock:I.scan}</div>
       <h3>${q||place!=="Tout"?"Rien ici":tab==="courses"?"Liste vide":tab==="soon"?"Tout est frais":"Stock vide"}</h3>
-      <p>${q||place!=="Tout"?"Essayez une autre recherche ou un autre emplacement.":tab==="courses"?"Quand un produit tombe à zéro, il atterrit ici.":tab==="soon"?"Aucun produit ne périme dans les 3 prochains jours.":"Scannez un code-barres ou ajoutez un produit avec le bouton +."}</p>
+      <p>${q||place!=="Tout"?"Essayez une autre recherche ou un autre emplacement.":tab==="courses"?"Ajoutez un article ci-dessus. Un produit qui tombe à zéro arrive ici tout seul.":tab==="soon"?"Aucun produit ne périme dans les 3 prochains jours.":"Scannez un code-barres ou ajoutez un produit avec le bouton +."}</p>
     </div>`}
 
     ${shelves.map(([p,rows])=>html`<section class="shelf" key=${p?p.id:tab}>
       ${p && html`<h2 class="shelf-h" style=${{"--c":p.c}}><i></i>${p.id}<span>${rows.length} réf.</span></h2>`}
       <div class="cards">${rows.map((it,i)=> tab==="courses"
-        ? html`<${CourseCard} key=${it.id} it=${it} i=${i} onBuy=${buy} onRemove=${remove} onOpen=${setEdit}/>`
-        : html`<${StockCard} key=${it.id} it=${it} i=${i} onOpen=${setEdit} onStep=${step}/>`)}</div>
+        ? html`<${CourseCard} key=${it.id} it=${it} i=${i} onToggle=${toggleCart} onQty=${setToBuy} onRemove=${remove} onOpen=${setEdit}/>`
+        : html`<${StockCard} key=${it.id} it=${it} i=${i} lots=${it.code?lotCount[it.code]:0} onOpen=${setEdit} onStep=${step}/>`)}</div>
     </section>`)}
 
     <nav class="dock" aria-label="Navigation">
@@ -1153,17 +1306,21 @@ function App(){
         <button class="tab press" aria-current=${tab==="stock"?"page":undefined} onClick=${()=>go("stock")}>${I.shelf}Stock</button>
         <button class="tab press" aria-current=${tab==="soon"?"page":undefined} onClick=${()=>go("soon")}>${I.clock}Bientôt${watch>0 && html`<span class="badge" key=${"w"+watch}>${watch}</span>`}</button>
         <button class="fab press" aria-label="Scanner un code" onClick=${openScan}>${I.scan}</button>
-        <button class="tab press" aria-current=${tab==="courses"?"page":undefined} onClick=${()=>go("courses")}>${I.cart}Courses${courses.length>0 && html`<span class="badge" key=${"c"+courses.length}>${courses.length}</span>`}</button>
+        <button class="tab press" aria-current=${tab==="courses"?"page":undefined} onClick=${()=>go("courses")}>${I.cart}Courses${toBuyCount>0 && html`<span class="badge" key=${"c"+toBuyCount}>${toBuyCount}</span>`}</button>
         <button class="tab press" onClick=${()=>setEdit({location:place!=="Tout"?place:"Frigo"})}>${I.pen}Saisir</button>
       </div>
     </nav>
 
     ${resetToken && html`<${ResetSheet} token=${resetToken} onDone=${closeReset} />`}
     ${syncOpen && html`<${SyncSheet} store=${store} onClose=${()=>setSyncOpen(false)} />`}
-    ${scan && html`<${Scanner} onResult=${onScanned} onClose=${()=>setScan(false)} />`}
+    ${scan && html`<${Scanner} onResult=${onScanned} onBurst=${onBurst} onClose=${closeScanner} />`}
     ${edit && html`<${Editor} key=${edit.id||"new"+scanCount} initial=${edit} scanCount=${scanCount} onClose=${()=>setEdit(null)}
-      onSave=${it=>{ vt(()=>put(it)); flash(`${it.name} rangé · ${it.location}`); }} onDelete=${it=>remove(it)} />`}
-    ${toast && html`<div class="toast" role="status" key=${toast.k}><span>${toast.msg}</span>${toast.undo && html`<button onClick=${()=>{toast.undo();setToast(null);}}>Annuler</button>`}</div>`}
+      onSave=${it=>{ const {_learn,...clean}=it; vt(()=>put(clean)); flash(`${clean.name} rangé · ${clean.location}`);
+        if(clean.code && clean.name!==placeholderName(clean.code)){
+          const data={name:clean.name,brand:clean.brand,location:clean.location,image:clean.image,nutri:clean.nutri,nova:clean.nova,eco:clean.eco};
+          if(_learn>0) data.shelfDays=_learn;
+          catalogSave(clean.code,data); } }} onDelete=${it=>remove(it)} />`}
+    ${toast && html`<div class="toast" role="status" key=${toast.k}><span>${toast.msg}</span>${toast.undo && html`<button onClick=${()=>{toast.undo();setToast(null);}}>${toast.label}</button>`}</div>`}
   </div>`;
 }
 ReactDOM.createRoot(document.getElementById("app")).render(html`<${App}/>`);

@@ -47,6 +47,7 @@ Wants=network-online.target
 User=pocketbase
 Group=pocketbase
 WorkingDirectory=$PB_DIR
+EnvironmentFile=-$PB_DIR/garde-manger.env
 ExecStart=$PB_DIR/pocketbase serve --http=0.0.0.0:$PB_PORT --dir=$PB_DIR/pb_data --migrationsDir=$PB_DIR/pb_migrations --hooksDir=$PB_DIR/pb_hooks --publicDir=$PB_DIR/pb_public
 Restart=on-failure
 RestartSec=5

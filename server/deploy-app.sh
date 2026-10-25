@@ -60,12 +60,31 @@ if [ -f "$UNIT" ] && ! grep -q -- "--hooksDir" "$UNIT"; then
   echo "→ Activation des règles serveur (pb_hooks) dans le service"
   sed -i "s#--migrationsDir=$PB_DIR/pb_migrations#--migrationsDir=$PB_DIR/pb_migrations --hooksDir=$PB_DIR/pb_hooks#" "$UNIT"
 fi
+# Réglages propres à Garde-manger (notifications…) : fichier lu par le service
+ENVF="$PB_DIR/garde-manger.env"
+if [ ! -f "$ENVF" ]; then
+  cat > "$ENVF" <<'ENV'
+# Garde-manger : réglages du serveur. Après modification : systemctl restart pocketbase
+#
+# Notifications des produits à finir, via ntfy (appli ntfy sur iPhone / Android).
+# Choisissez un nom de sujet difficile à deviner, ou votre propre serveur ntfy.
+#GM_NTFY_URL=https://ntfy.sh/garde-manger-changez-moi
+#GM_NTFY_TOKEN=
+# Heure d'envoi (format cron, heure du serveur) et horizon en jours
+#GM_DIGEST_CRON=0 7 * * *
+#GM_DIGEST_DAYS=2
+ENV
+  chmod 600 "$ENVF"
+fi
+if [ -f "$UNIT" ] && ! grep -q "^EnvironmentFile=" "$UNIT"; then
+  sed -i "s#^WorkingDirectory=.*#&\nEnvironmentFile=-$ENVF#" "$UNIT"
+fi
 systemctl daemon-reload
 
 echo "→ Migrations et règles serveur"
 mkdir -p "$PB_DIR/pb_migrations" "$PB_DIR/pb_hooks"
 cp "$REPO"/server/pb_migrations/*.js "$PB_DIR/pb_migrations/"
-cp "$REPO"/server/pb_hooks/*.pb.js "$PB_DIR/pb_hooks/"
+cp "$REPO"/server/pb_hooks/*.js "$PB_DIR/pb_hooks/"
 chown -R pocketbase:pocketbase "$PB_DIR/pb_migrations" "$PB_DIR/pb_hooks"
 systemctl restart pocketbase
 sleep 2

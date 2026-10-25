@@ -9,10 +9,16 @@ Application web mobile (PWA) pour gérer le stock alimentaire de la maison : on 
 - **Scan** de codes-barres EAN et de QR codes avec la caméra, avec un bip de caisse et un ticket qui s'imprime à l'écran.
 - **Fiche produit automatique** comme Yuka, grâce à [Open Food Facts](https://world.openfoodfacts.org) : nom, marque, format, photo, Nutri-Score, NOVA et Éco-score, et emplacement deviné (frigo, congélateur, placard, cave). Repli sur Open Products Facts et Open Beauty Facts pour les produits non alimentaires.
 - **Lecture rapide des codes** : détecteur natif sur Android, moteur ZXing-C++ en WebAssembly sur iPhone, contrôle du chiffre de contrôle EAN pour éviter les fausses lectures, lampe torche.
+- **Catalogue du foyer** : chaque fiche trouvée ou complétée à la main est enregistrée sur le serveur ; un produit inconnu d'Open Food Facts complété une fois est reconnu ensuite par tous les téléphones.
+- **Date suggérée** selon le type de produit (yaourt ≈ 3 semaines, viande ≈ 3 jours, surgelé ≈ 6 mois…), et apprise à partir de vos saisies.
+- **Lots** : le même produit avec des dates différentes ; au scan d'un produit déjà en stock, « Autre date » crée un nouveau lot.
+- **Scan en rafale** : pour ranger un sac de courses d'un coup, chaque bip ajoute l'article, les fiches se remplissent en arrière-plan.
+- **Liste de courses** : articles libres, quantité à acheter, panier à cocher en magasin, puis « Ranger » qui remet tout en stock avec une date suggérée. Partagée en direct entre téléphones.
+- **Notifications** chaque matin des produits à finir, via [ntfy](https://ntfy.sh) (voir plus bas).
 - **Ajout manuel** pour les produits sans code (fruits, légumes, restes…).
 - **Quatre emplacements** : Frigo, Congélateur, Placard, Cave.
 - **Anneau de fraîcheur** sur chaque produit et onglet « Bientôt » pour ce qui périme sous 3 jours.
-- **Liste de courses** : un produit qui tombe à zéro y passe tout seul, « Acheté » le remet en stock.
+- Un produit qui tombe à zéro passe tout seul sur la liste de courses.
 - **Hors ligne** : l'app reste utilisable sans réseau une fois ouverte une première fois.
 - Thème clair et sombre selon le réglage du téléphone.
 
@@ -79,6 +85,16 @@ Dans l'app, bouton **nuage** en haut → adresse `https://stock.mondomaine.fr` +
 - **Bibliothèques hébergées avec l'app** : `deploy-app.sh` télécharge React, htm, ZXing, barcode-detector et le moteur WebAssembly dans `pb_public/vendor/` (versions figées). Les CDN ne servent plus que de secours.
 - **Mises à jour visibles** : chaque déploiement change le service worker, et l'app affiche « Nouvelle version · Recharger ».
 - **Scans hors ligne** : un article scanné sans réseau peut être enregistré sans nom ; sa fiche (nom, marque, photo, scores) est complétée automatiquement au retour du réseau.
+
+### Notifications de péremption (ntfy)
+
+1. Installez l'appli **ntfy** (App Store / Play Store) et abonnez-vous à un sujet au nom difficile à deviner, par exemple `garde-manger-7f3k9q`.
+2. Dans le LXC, éditez `/opt/pocketbase/garde-manger.env` et décommentez :
+   ```
+   GM_NTFY_URL=https://ntfy.sh/garde-manger-7f3k9q
+   ```
+   (ou l'adresse de votre propre serveur ntfy, avec `GM_NTFY_TOKEN` si le sujet est protégé). Heure d'envoi : `GM_DIGEST_CRON` (7 h, heure du serveur, par défaut).
+3. `systemctl restart pocketbase`, puis dans l'app : bouton nuage → **Tester les notifications**.
 
 ### Mot de passe oublié
 
