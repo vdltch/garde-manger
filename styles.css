@@ -311,7 +311,7 @@ html.gated,html.gated body{overflow:hidden}
 .switch i{position:absolute;top:3px;left:3px;width:28px;height:28px;border-radius:50%;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.25);transition:transform .45s var(--spring)}
 .switch[aria-checked="true"]{background:var(--laser)}
 .switch[aria-checked="true"] i{transform:translateX(22px)}
-.tripbar{position:fixed;z-index:7;left:50%;transform:translateX(-50%);bottom:calc(92px + env(safe-area-inset-bottom,0px));width:min(440px,calc(100% - 28px));
+.tripbar{position:fixed;z-index:7;left:0;right:0;margin-inline:auto;bottom:calc(92px + env(safe-area-inset-bottom,0px));width:min(440px,calc(100% - 28px));
   display:flex;align-items:center;gap:12px;padding:12px 16px;border:0;border-radius:20px;background:var(--ink);color:var(--bg);box-shadow:var(--shadow);overflow:hidden;text-align:left;animation:rise .5s var(--spring) both}
 .tripbar svg{width:22px;height:22px;flex:none;color:var(--laser)}
 .tb-store{flex:1;min-width:0;display:grid;font-weight:600;font-size:.92rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
