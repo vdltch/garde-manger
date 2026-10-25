@@ -143,7 +143,8 @@ def test_shopping_day_with_prices_total_and_put_away(phone):
     page.locator(".tab", has_text="Courses").click()
     page.get_by_role("switch", name="Jour de courses").click()
     d = page.get_by_role("dialog", name="Jour de courses")
-    expect(d.get_by_role("button", name=re.compile("E.Leclerc"))).to_be_visible(timeout=10000)   # nearest store, found by location
+    expect(d.locator(".store").first).to_contain_text("E.Leclerc", timeout=10000)   # nearest store, found by location
+    expect(d.locator(".store").first).to_contain_text("670 m")
     d.locator("#trip-budget").fill("20")
     d.get_by_role("button", name="Commencer chez E.Leclerc").click()
     expect(page.locator(".tripbar")).to_contain_text("E.Leclerc")
@@ -192,7 +193,7 @@ def test_shopping_day_with_prices_total_and_put_away(phone):
     page.locator(".tab", has_text="Courses").click()
     page.get_by_role("switch", name="Jour de courses").click()
     d = page.get_by_role("dialog", name="Jour de courses")
-    d.get_by_role("button", name=re.compile("E.Leclerc")).first.click()
+    d.locator(".store", has_text="E.Leclerc").first.click()
     d.get_by_role("button", name="Commencer chez E.Leclerc").click()
     page.get_by_role("button", name="Scanner un code").click()
     page.locator("#typed-code").fill("5449000000996")
