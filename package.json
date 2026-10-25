@@ -1,0 +1,10 @@
+{
+  "name": "garde-manger",
+  "private": true,
+  "type": "module",
+  "description": "PWA de stock alimentaire : scan, péremptions, liste de courses, synchro PocketBase",
+  "scripts": {
+    "test": "node --test \"tests/unit/*.test.js\"",
+    "check": "node --test \"tests/unit/*.test.js\" && for f in src/*.js src/ui/*.js sw.js; do node --check \"$f\" || exit 1; done"
+  }
+}

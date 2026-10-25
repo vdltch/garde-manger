@@ -124,16 +124,52 @@ Un QR code peut contenir :
 
 ## Technique
 
-- Un seul fichier `index.html` : React 18 + [htm](https://github.com/developit/htm) (pas de build). Lecture des codes : API `BarcodeDetector` native, sinon [barcode-detector](https://github.com/Sec-ant/barcode-detector) (ZXing-C++ en WebAssembly), sinon [ZXing JS](https://github.com/zxing-js/library).
-- Animations en CSS (ressorts via `linear()`) et View Transitions API.
-- Bip de scan synthétisé avec la Web Audio API (aucun fichier son).
-- `server/` : script d'installation PocketBase et migration de la base.
-- `sw.js` : service worker pour le fonctionnement hors ligne. `manifest.webmanifest` : installation en tant qu'app.
+Pas d'étape de build : le navigateur charge directement des modules ES.
+
+```
+index.html            page, chargement des bibliothèques (vendor/ puis CDN en secours)
+styles.css            styles et thèmes clair/sombre
+src/main.js           démarrage
+src/app.js            écran principal : stock, bientôt, courses, flux de scan
+src/domain.js         logique pure (dates, codes EAN, catégories) — testée avec node
+src/storage.js        cache local + synchro PocketBase (file d'attente, temps réel, connexion)
+src/products.js       fiches produit : catalogue du foyer puis Open Food Facts
+src/barcode.js        lecture des codes : BarcodeDetector, ZXing-C++ WebAssembly, ZXing JS
+src/device.js         transitions, vibrations, bip du scanner
+src/ui/*.js           composants (scanner, fiche, cartes, synchro, fenêtres)
+src/gate.js           écran d'installation selon le téléphone et le navigateur
+sw.js                 service worker (hors ligne, mises à jour)
+server/               installation et déploiement PocketBase, migrations, règles serveur
+tests/unit/           tests node (logique, structure des modules, rendu de chaque écran)
+tests/e2e/            tests navigateur contre un vrai PocketBase (Playwright)
+```
+
+- React 18 + [htm](https://github.com/developit/htm) pour les gabarits sans JSX. Lecture des codes : API `BarcodeDetector` native, sinon [barcode-detector](https://github.com/Sec-ant/barcode-detector) (ZXing-C++ en WebAssembly), sinon [ZXing JS](https://github.com/zxing-js/library).
+- Animations en CSS (ressorts via `linear()`) et View Transitions API. Bip synthétisé avec la Web Audio API.
+- Accessibilité : zones tactiles de 44 px, focus gardé dans les fenêtres et rendu à la fermeture, mouvements réduits respectés.
+
+### Tests
+
+```bash
+npm test                                   # logique, structure, rendu de chaque écran (node 22, aucune dépendance)
+bash server/fetch-vendor.sh vendor         # bibliothèques pour les tests navigateur
+pip install pytest playwright requests && python -m playwright install chromium
+PB_BIN=/chemin/vers/pocketbase pytest tests/e2e -v
+```
+
+Les deux suites tournent sur GitHub Actions à chaque push (`.github/workflows/tests.yml`).
+
+### Mise à jour automatique du serveur
+
+```bash
+cd ~/garde-manger/server && bash enable-auto-update.sh
+```
+
+Toutes les 10 minutes, le LXC vérifie s'il y a un nouveau commit sur `main` **dont les tests GitHub sont verts**, puis lance `deploy-app.sh`. Un commit en échec n'est jamais déployé. Journal : `journalctl -u garde-manger-update`.
 
 ### Lancer en local
 
 ```bash
-python3 -m http.server 8000
+bash server/fetch-vendor.sh vendor
+pocketbase serve --migrationsDir=server/pb_migrations --hooksDir=server/pb_hooks --publicDir=.
 ```
-
-puis ouvrir http://localhost:8000. Pour tester la caméra depuis un téléphone, il faut du HTTPS (GitHub Pages ou un tunnel).

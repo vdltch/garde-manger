@@ -1,0 +1,42 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  unit:
+    name: Logique et structure (node)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm run check
+
+  e2e:
+    name: App complète (PocketBase + navigateur)
+    runs-on: ubuntu-latest
+    env:
+      PB_VERSION: "0.28.4"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Bibliothèques de l'app
+        run: bash server/fetch-vendor.sh vendor
+      - name: PocketBase
+        run: |
+          mkdir -p .pb
+          curl -fsSL -o .pb/pb.zip "https://github.com/pocketbase/pocketbase/releases/download/v${PB_VERSION}/pocketbase_${PB_VERSION}_linux_amd64.zip"
+          unzip -q .pb/pb.zip pocketbase -d .pb
+      - name: Playwright
+        run: |
+          pip install pytest playwright requests
+          python -m playwright install --with-deps chromium
+      - name: Tests de bout en bout
+        run: pytest tests/e2e -v
+        env:
+          PB_BIN: .pb/pocketbase
