@@ -20,13 +20,22 @@ cp "$REPO/index.html" "$REPO/manifest.webmanifest" "$REPO/sw.js" "$PUB/"
 cp "$REPO"/icons/*.png "$PUB/icons/"
 chown -R pocketbase:pocketbase "$PUB"
 
-# Ajoute --publicDir au service s'il n'y est pas encore
+# Ajoute --publicDir et --hooksDir au service s'ils n'y sont pas encore
 if [ -f "$UNIT" ] && ! grep -q -- "--publicDir" "$UNIT"; then
   echo "→ Activation des fichiers publics dans le service"
   sed -i "s#--migrationsDir=$PB_DIR/pb_migrations#--migrationsDir=$PB_DIR/pb_migrations --publicDir=$PUB#" "$UNIT"
-  systemctl daemon-reload
 fi
-cp "$REPO"/server/pb_migrations/*.js "$PB_DIR/pb_migrations/" && chown -R pocketbase:pocketbase "$PB_DIR/pb_migrations"
+if [ -f "$UNIT" ] && ! grep -q -- "--hooksDir" "$UNIT"; then
+  echo "→ Activation des règles serveur (pb_hooks) dans le service"
+  sed -i "s#--migrationsDir=$PB_DIR/pb_migrations#--migrationsDir=$PB_DIR/pb_migrations --hooksDir=$PB_DIR/pb_hooks#" "$UNIT"
+fi
+systemctl daemon-reload
+
+echo "→ Migrations et règles serveur"
+mkdir -p "$PB_DIR/pb_migrations" "$PB_DIR/pb_hooks"
+cp "$REPO"/server/pb_migrations/*.js "$PB_DIR/pb_migrations/"
+cp "$REPO"/server/pb_hooks/*.pb.js "$PB_DIR/pb_hooks/"
+chown -R pocketbase:pocketbase "$PB_DIR/pb_migrations" "$PB_DIR/pb_hooks"
 systemctl restart pocketbase
 sleep 2
 curl -fsS http://localhost:8090/ -o /dev/null && echo "✔ App publiée : ouvrez votre domaine (ex. https://stock.quipaie.com/)" || { echo "L'app ne répond pas, voir : journalctl -u pocketbase -n 30"; exit 1; }

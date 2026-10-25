@@ -68,6 +68,20 @@ L'app est servie en HTTPS : le navigateur refuse de parler à un serveur en HTTP
 
 Dans l'app, bouton **nuage** en haut → adresse `https://stock.mondomaine.fr` + e-mail et mot de passe. Le stock déjà présent sur le téléphone est envoyé sur le serveur. La pastille du bouton indique l'état : vert synchronisé, orange hors ligne, rouge session expirée.
 
+### Sécurité et fiabilité (appliquées automatiquement)
+
+- **Tableau de bord admin réservé au réseau local** : `/_/` et la connexion superuser renvoient 404 via le domaine public ; ils restent accessibles sur `http://IP-DU-LXC:8090/_/`. Pour autoriser un autre nom d'hôte : variable `PB_ADMIN_HOSTS` dans le service.
+- **Quantités sans conflit** : les + et − sont envoyés comme incréments côté serveur, deux téléphones peuvent modifier le même produit en même temps.
+- **Sauvegarde automatique** chaque nuit (3 h 30 UTC), 14 conservées dans `pb_data/backups`.
+- **Sessions de 90 jours**, renouvelées à chaque ouverture de l'app.
+- **Limiteur de requêtes** activé, avec la vraie IP du client derrière le reverse proxy.
+
+Changer le mot de passe admin :
+
+```bash
+runuser -u pocketbase -- /opt/pocketbase/pocketbase superuser upsert EMAIL 'NOUVEAU-MOT-DE-PASSE' --dir=/opt/pocketbase/pb_data
+```
+
 ### Sauvegarde
 
 Toutes les données sont dans `/opt/pocketbase/pb_data`. Une sauvegarde Proxmox du conteneur suffit, ou **Settings → Backups** dans le tableau de bord PocketBase.

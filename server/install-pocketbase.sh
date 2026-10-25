@@ -47,7 +47,7 @@ Wants=network-online.target
 User=pocketbase
 Group=pocketbase
 WorkingDirectory=$PB_DIR
-ExecStart=$PB_DIR/pocketbase serve --http=0.0.0.0:$PB_PORT --dir=$PB_DIR/pb_data --migrationsDir=$PB_DIR/pb_migrations --publicDir=$PB_DIR/pb_public
+ExecStart=$PB_DIR/pocketbase serve --http=0.0.0.0:$PB_PORT --dir=$PB_DIR/pb_data --migrationsDir=$PB_DIR/pb_migrations --hooksDir=$PB_DIR/pb_hooks --publicDir=$PB_DIR/pb_public
 Restart=on-failure
 RestartSec=5
 LimitNOFILE=4096
@@ -75,7 +75,7 @@ cat <<DONE
 
 ✔ PocketBase tourne sur http://$IP:$PB_PORT
   App :             http://$IP:$PB_PORT/
-  Tableau de bord : http://$IP:$PB_PORT/_/  (connexion avec ADMIN_EMAIL)
+  Tableau de bord : http://$IP:$PB_PORT/_/  (réseau local uniquement, connexion avec ADMIN_EMAIL)
 
 Étapes suivantes :
   1. Dans le tableau de bord → Collections → users → « New record » : créez un compte par personne du foyer.

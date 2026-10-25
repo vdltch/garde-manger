@@ -514,9 +514,16 @@ function useStock(){
   itemsRef.current = items; cfg.current = pb;
 
   const saveQ = ()=>{ lsSet(Q_KEY,queue.current); setPending(queue.current.length); };
-  const enqueue = (op)=>{ const id=op.op==="put"?op.it.id:op.id;
-    queue.current = queue.current.filter(o=>(o.op==="put"?o.it.id:o.id)!==id); queue.current.push(op); saveQ(); };
-  const pendingIds = ()=> new Set(queue.current.map(o=>o.op==="put"?o.it.id:o.id));
+  const opId = (o)=> o.op==="put" ? o.it.id : o.id;
+  // put/del replace whatever was pending for that item; +/- steps add up so no tap is lost
+  const enqueue = (op)=>{ const id=opId(op);
+    if(op.op==="inc"){
+      let last=-1; queue.current.forEach((o,i)=>{ if(opId(o)===id) last=i; });
+      const prev=queue.current[last];
+      if(prev && prev.op==="inc" && !(last===0 && flushing.current)) prev.d+=op.d; else queue.current.push(op);
+    } else { queue.current = queue.current.filter(o=>opId(o)!==id); queue.current.push(op); }
+    saveQ(); };
+  const pendingIds = ()=> new Set(queue.current.map(opId));
 
   const flush = async()=>{
     const c=cfg.current; if(!c||!c.token||flushing.current) return true; flushing.current=true;
@@ -527,10 +534,20 @@ function useStock(){
           try{ await pbReq(c,`/api/collections/stock/records/${op.it.id}`,{method:"PATCH",body:JSON.stringify(toRec(op.it))}); }
           catch(e){ if(e.status!==404) throw e;
             await pbReq(c,`/api/collections/stock/records`,{method:"POST",body:JSON.stringify({id:op.it.id,...toRec(op.it)})}); }
+        } else if(op.op==="inc"){
+          // server-side increment: two phones tapping +1 at the same time both count
+          if(op.d!==0){
+            try{
+              const r=await pbReq(c,`/api/collections/stock/records/${op.id}`,{method:"PATCH",body:JSON.stringify(op.d>0?{"qty+":op.d}:{"qty-":-op.d})});
+              if(r && Number(r.qty)<0) await pbReq(c,`/api/collections/stock/records/${op.id}`,{method:"PATCH",body:JSON.stringify({qty:0})});
+            }catch(e){ if(e.status!==404) throw e;
+              const it=itemsRef.current.find(x=>x.id===op.id);
+              if(it) await pbReq(c,`/api/collections/stock/records`,{method:"POST",body:JSON.stringify({id:it.id,...toRec(it)})}); }
+          }
         } else {
           try{ await pbReq(c,`/api/collections/stock/records/${op.id}`,{method:"DELETE"}); }catch(e){ if(e.status!==404) throw e; }
         }
-        queue.current.shift(); saveQ();
+        queue.current = queue.current.filter(o=>o!==op); saveQ();
       }
       return true;
     }catch(e){ setSync(e.status===401||e.status===403?"error":"offline"); return false; }
@@ -583,6 +600,10 @@ function useStock(){
 
   const put = (it)=>{ setItems(p=>{const i=p.findIndex(x=>x.id===it.id); const n=[...p]; i<0?n.push(it):n[i]=it; return n;});
     if(cfg.current&&cfg.current.token){ enqueue({op:"put",it}); flush(); } };
+  const bump = (it,d)=>{ const n=Math.max(0,(Number(it.qty)||0)+d);
+    setItems(p=>p.map(x=>x.id===it.id?{...x,qty:n}:x));
+    if(cfg.current&&cfg.current.token){ enqueue({op:"inc",id:it.id,d}); flush(); }
+    return n; };
   const del = (id)=>{ setItems(p=>p.filter(x=>x.id!==id));
     if(cfg.current&&cfg.current.token){ enqueue({op:"del",id}); flush(); } };
 
@@ -602,7 +623,7 @@ function useStock(){
   };
   const logout = ()=>{ lsSet(PB_KEY,null); queue.current=[]; saveQ(); cfg.current=null; setPb(null); };
 
-  return {items,put,del,sync,pb,pending,login,logout,resync};
+  return {items,put,del,bump,sync,pb,pending,login,logout,resync};
 }
 
 /* ---------- Sync settings ---------- */
@@ -952,7 +973,7 @@ function CourseCard({it,i,onBuy,onRemove,onOpen}){
 
 /* ---------- App ---------- */
 function App(){
-  const store=useStock(); const {items,put,del,sync}=store; const [syncOpen,setSyncOpen]=useState(false);
+  const store=useStock(); const {items,put,del,bump,sync}=store; const [syncOpen,setSyncOpen]=useState(false);
   const [tab,setTab]=useState("stock");
   const [q,setQ]=useState(""); const [place,setPlace]=useState("Tout");
   const [scan,setScan]=useState(false); const [edit,setEdit]=useState(null);
@@ -970,9 +991,9 @@ function App(){
   const shelves = tab==="stock" ? PLACES.map(p=>[p,list.filter(i=>i.location===p.id)]).filter(s=>s[1].length) : [[null,list]];
 
   const flash=(msg,undo)=>{ setToast({msg,undo,k:Date.now()}); clearTimeout(window.__t); window.__t=setTimeout(()=>setToast(null),4200); };
-  const step=(it,d)=>{ buzz(8); const n=Math.max(0,(Number(it.qty)||0)+d);
-    if(n===0){ vt(()=>put({...it,qty:0})); flash(`${it.name} → liste de courses`,()=>vt(()=>put(it))); }
-    else put({...it,qty:n}); };
+  const step=(it,d)=>{ buzz(8);
+    if((Number(it.qty)||0)+d<=0){ vt(()=>bump(it,d)); flash(`${it.name} → liste de courses`,()=>vt(()=>put(it))); }
+    else bump(it,d); };
   const remove=(it)=>{ vt(()=>del(it.id)); flash(`${it.name} supprimé`,()=>vt(()=>put(it))); };
   const buy=(it)=>{ buzz(12); vt(()=>put({...it,qty:1,expiry:""})); flash(`${it.name} remis en stock`); };
   const go=(t)=>{ if(t!==tab){ buzz(6); vt(()=>{ setTab(t); }); window.scrollTo({top:0,behavior:REDUCED?"auto":"smooth"}); } };
@@ -983,7 +1004,7 @@ function App(){
     const n=scanCount+1; setScanCount(n); try{ localStorage.setItem("gm-scans",n); }catch(e){}
     const p=classify(text);
     const existing=p.code&&items.find(i=>i.code===p.code);
-    if(existing){ const nq=(Number(existing.qty)||0)+1; vt(()=>put({...existing,qty:nq})); flash(`+1 ${existing.name} · ${nq} ${qtyText(existing)||"en stock"}`); return; }
+    if(existing){ const nq=(Number(existing.qty)||0)+1; vt(()=>bump(existing,1)); flash(`+1 ${existing.name} · ${nq} ${qtyText(existing)||"en stock"}`); return; }
     if(!p.code){ setEdit({...p,scanned:true}); return; }
     setEdit({...p,scanned:true,loading:true,location:"Placard"});
     lookup(p.code).then(r=>setEdit(e=> e&&e.scanned&&e.code===p.code ? {...e,...r,loading:false} : e));
