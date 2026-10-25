@@ -90,8 +90,8 @@ def test_burst_mode_adds_each_scan(phone):
     expect(page.locator(".burst-log li")).to_have_count(2)
     page.get_by_role("button", name="Fermer le scanner").click()
     expect(page.locator(".toast")).to_contain_text("2 articles scannés en rafale")
-    expect(card(page, "Nutella")).to_be_visible(timeout=10000)
-    page.evaluate("localStorage.setItem('gm-burst','false')")
+    expect(card(page, "Nutella").first).to_be_visible(timeout=10000)   # both codes are mocked as Nutella
+    expect(page.locator(".card")).to_have_count(2)
 
 
 def test_two_phones_stay_in_sync_and_count_both_taps(phone, server, ntfy):

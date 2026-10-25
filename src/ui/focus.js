@@ -18,7 +18,8 @@ export function useDialogFocus(ref, onEscape){
       if(e.shiftKey && document.activeElement === a){ e.preventDefault(); z.focus(); }
       else if(!e.shiftKey && document.activeElement === z){ e.preventDefault(); a.focus(); }
     };
-    box.addEventListener("keydown", onKey);
-    return () => { box.removeEventListener("keydown", onKey); if(before && before.focus) try{ before.focus({ preventScroll: true }); }catch(e){} };
+    // on the document, not the dialog: focus can fall back to <body> when the content changes
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("keydown", onKey); if(before && before.focus) try{ before.focus({ preventScroll: true }); }catch(e){} };
   }, []);
 }
