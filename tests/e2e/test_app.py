@@ -171,6 +171,13 @@ def test_shopping_day_with_prices_total_and_put_away(phone):
     page.get_by_role("button", name="Fermer le scanner").click()
     expect(page.locator(".tripbar .tb-total")).to_have_text(re.compile(r"8,18\s€"))
 
+    page.wait_for_timeout(600)
+    info = page.evaluate("""() => { const t = document.querySelector('.tripbar'); const r = t.getBoundingClientRect();
+      const hits = document.elementsFromPoint(r.x + r.width / 2, r.y + r.height / 2).slice(0, 6).map(e => e.tagName + '.' + e.className);
+      const cs = getComputedStyle(t);
+      return { rect: [r.x, r.y, r.width, r.height], hits, z: cs.zIndex, pe: cs.pointerEvents, vis: cs.visibility, op: cs.opacity, tr: cs.transform, anim: cs.animationName,
+        vw: innerWidth, vh: innerHeight, scrollY, parents: (() => { let a = [], e = t.parentElement; while (e) { const c = getComputedStyle(e); a.push(e.tagName + '.' + e.className + ' tf=' + c.transform + ' f=' + c.filter + ' ct=' + c.contain + ' vtn=' + c.viewTransitionName); e = e.parentElement; } return a; })() }; }""")
+    assert "tripbar" in " ".join(info["hits"][:2]), info
     page.locator(".tripbar").click()
     b = page.get_by_role("dialog", name="Panier du jour")
     b.locator("#bl-name").fill("Tomates")
