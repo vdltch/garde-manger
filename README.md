@@ -7,7 +7,8 @@ Application web mobile (PWA) pour gérer le stock alimentaire de la maison : on 
 ## Fonctionnalités
 
 - **Scan** de codes-barres EAN et de QR codes avec la caméra, avec un bip de caisse et un ticket qui s'imprime à l'écran.
-- **Fiche produit automatique** grâce à [Open Food Facts](https://world.openfoodfacts.org) (nom et marque).
+- **Fiche produit automatique** comme Yuka, grâce à [Open Food Facts](https://world.openfoodfacts.org) : nom, marque, format, photo, Nutri-Score, NOVA et Éco-score, et emplacement deviné (frigo, congélateur, placard, cave). Repli sur Open Products Facts et Open Beauty Facts pour les produits non alimentaires.
+- **Lecture rapide des codes** : détecteur natif sur Android, moteur ZXing-C++ en WebAssembly sur iPhone, contrôle du chiffre de contrôle EAN pour éviter les fausses lectures, lampe torche.
 - **Ajout manuel** pour les produits sans code (fruits, légumes, restes…).
 - **Quatre emplacements** : Frigo, Congélateur, Placard, Cave.
 - **Anneau de fraîcheur** sur chaque produit et onglet « Bientôt » pour ce qui périme sous 3 jours.
@@ -85,7 +86,7 @@ Un QR code peut contenir :
 
 ## Technique
 
-- Un seul fichier `index.html` : React 18 + [htm](https://github.com/developit/htm) (pas de build), [ZXing](https://github.com/zxing-js/library) et l'API `BarcodeDetector` pour la lecture des codes.
+- Un seul fichier `index.html` : React 18 + [htm](https://github.com/developit/htm) (pas de build). Lecture des codes : API `BarcodeDetector` native, sinon [barcode-detector](https://github.com/Sec-ant/barcode-detector) (ZXing-C++ en WebAssembly), sinon [ZXing JS](https://github.com/zxing-js/library).
 - Animations en CSS (ressorts via `linear()`) et View Transitions API.
 - Bip de scan synthétisé avec la Web Audio API (aucun fichier son).
 - `server/` : script d'installation PocketBase et migration de la base.

@@ -228,6 +228,21 @@ h1{font-family:var(--f-display);font-weight:800;font-size:clamp(1.75rem,8vw,2.3r
 @keyframes toast{from{transform:translate(-50%,30px) scale(.9);opacity:0}}
 .toast button{border:0;background:color-mix(in srgb,var(--bg) 16%,transparent);color:var(--bg);border-radius:10px;padding:6px 10px;font-weight:700;font-size:.8rem}
 
+.ring b.photo{background:#fff;overflow:hidden;padding:3px}
+.ring b.photo img{width:100%;height:100%;object-fit:contain;border-radius:50%}
+.ns{font-family:var(--f-display);font-weight:700;font-size:.62rem;color:#fff;background:var(--sc);border-radius:6px;padding:2px 6px;line-height:1.3}
+.t-prod{display:flex;gap:12px;align-items:center;justify-content:space-between}
+.t-img{width:58px;height:58px;object-fit:contain;background:#fff;border-radius:6px;flex:none;filter:saturate(.9)}
+.t-scores{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 2px}
+.score{display:inline-flex;align-items:center;gap:5px;border:1px solid currentColor;border-radius:6px;padding:1px 2px 1px 6px}
+.score small{font-size:.58rem;letter-spacing:.06em}
+.score b{display:grid;place-items:center;min-width:18px;height:18px;border-radius:4px;background:var(--sc,#555);color:#fff;font-size:.72rem}
+.score.nova.n1 b{background:#00aa00}.score.nova.n2 b{background:#ffcc00;color:#222}.score.nova.n3 b{background:#ff6600}.score.nova.n4 b{background:#ff0000}
+.blink{animation:blink 1s steps(2,start) infinite}
+@keyframes blink{to{visibility:hidden}}
+.scan-tools{display:flex;gap:8px}
+.scan-x.on{background:#fff;color:#05070a}
+
 /* Install gate */
 html.gated,html.gated body{overflow:hidden}
 #gate{position:fixed;inset:0;z-index:100;background:var(--bg);overflow-y:auto;display:flex;justify-content:center;
@@ -473,10 +488,12 @@ function loadLocal(){ return lsGet(LS_KEY,null); }
 function saveLocal(items){ lsSet(LS_KEY,items); }
 const DEFAULT_SERVER = (location.protocol==="https:" && !/github\.io$/.test(location.hostname)) ? location.origin : "https://stock.quipaie.com"; // serveur du foyer, pré-rempli dans l'écran de connexion
 const PB_KEY="gm-pocketbase", Q_KEY="gm-sync-queue";
-const PB_FIELDS=["name","brand","code","qty","unit","location","expiry","addedAt"];
+const PB_FIELDS=["name","brand","code","qty","unit","location","expiry","addedAt","image","nutri","nova","eco"];
+const PB_NUMBERS=["qty","addedAt","nova"];
 const isPbId=(id)=>/^[a-z0-9]{15}$/.test(id||"");
-const toRec=(it)=>{ const r={}; PB_FIELDS.forEach(f=>{ r[f]= it[f]!=null ? it[f] : (f==="qty"||f==="addedAt"?0:""); }); r.qty=Number(r.qty)||0; return r; };
-const fromRec=(r)=>{ const it={id:r.id}; PB_FIELDS.forEach(f=>{ it[f]=r[f]; }); it.qty=Number(it.qty)||0; it.addedAt=Number(it.addedAt)||0; return it; };
+const toRec=(it)=>{ const r={}; PB_FIELDS.forEach(f=>{ r[f]= it[f]!=null ? it[f] : (PB_NUMBERS.includes(f)?0:""); }); PB_NUMBERS.forEach(f=>{ r[f]=Number(r[f])||0; }); return r; };
+const fromRec=(r)=>{ const it={id:r.id}; PB_FIELDS.forEach(f=>{ it[f]=r[f]; }); PB_NUMBERS.forEach(f=>{ it[f]=Number(it[f])||0; }); FIELD_STR.forEach(f=>{ if(it[f]==null) it[f]=""; }); return it; };
+const FIELD_STR=["image","nutri","eco"];
 
 function pbReq(cfg,path,opt={}){
   const headers={"Content-Type":"application/json"}; if(cfg.token) headers.Authorization=cfg.token;
@@ -619,41 +636,105 @@ function SyncSheet({store,onClose}){
   `}<//>`;
 }
 
-/* ---------- Product lookup (Open Food Facts, self-hosted only) ---------- */
-async function lookup(code){
-  try{
-    const r = await fetch(`https://world.openfoodfacts.org/api/v2/product/${code}.json?fields=product_name_fr,product_name,brands,quantity`);
-    if(!r.ok) return null; const j=await r.json(); if(j.status!==1) return null;
-    const p=j.product; return {name:p.product_name_fr||p.product_name||"",brand:(p.brands||"").split(",")[0].trim(),hint:p.quantity||""};
-  }catch(e){ return null; }
+/* ---------- Product database: Open Food Facts (+ Open Products / Beauty Facts) ---------- */
+const OFF_FIELDS="code,product_name_fr,product_name,generic_name_fr,brands,quantity,image_front_small_url,image_small_url,nutriscore_grade,nova_group,ecoscore_grade,environmental_score_grade,categories_tags";
+const OFF_HOSTS=[["world.openfoodfacts.org","OPEN FOOD FACTS"],["world.openproductsfacts.org","OPEN PRODUCTS FACTS"],["world.openbeautyfacts.org","OPEN BEAUTY FACTS"]];
+const OFF_CACHE="gm-products";
+const grade=(g)=> /^[a-e]$/.test(g||"") ? g : "";
+// GTIN check digit (EAN-8, UPC-A, EAN-13, GTIN-14): rejects misreads before they reach the product database
+const validGtin=(code)=>{ if(!/^(\d{8}|\d{12,14})$/.test(code)) return false;
+  const d=code.split("").map(Number), chk=d.pop(); let sum=0;
+  d.reverse().forEach((n,i)=>{ sum+=n*(i%2===0?3:1); }); return (10-sum%10)%10===chk; };
+const guessPlace=(tags)=>{ const t=(tags||[]).join(" ");
+  if(/frozen|surgel/.test(t)) return "Congélateur";
+  if(/wines|beers|ciders|spirits|alcoholic-beverages/.test(t)) return "Cave";
+  if(/dairies|dairy|yogurts|cheeses|fresh-|meats|charcuteries|hams|sausages|fishes|seafood|butters|creams|dairy-desserts|ready-meals|refrigerated|tofu|fresh-pasta|salads|smoked-salmon|eggs/.test(t)) return "Frigo";
+  return "Placard"; };
+async function fetchJSON(url,ms){
+  const ac=new AbortController(); const t=setTimeout(()=>ac.abort(),ms);
+  try{ const r=await fetch(url,{signal:ac.signal,headers:{Accept:"application/json"}}); return r.ok ? await r.json() : {status:0}; }
+  finally{ clearTimeout(t); }
 }
-async function parseScan(text){
+async function lookup(code){
+  const cache=lsGet(OFF_CACHE,{}); if(cache[code]) return cache[code];
+  const codes=[code]; if(code.length===12) codes.push("0"+code); if(code.length===13&&code[0]==="0") codes.push(code.slice(1));
+  for(const [host,source] of OFF_HOSTS){
+    for(const c of codes){
+      let j; try{ j=await fetchJSON(`https://${host}/api/v2/product/${c}.json?fields=${OFF_FIELDS}`, host.includes("food")?8000:5000); }
+      catch(e){ if(host.includes("food")) return {found:false,offline:true}; continue; }
+      const p=j&&j.status===1&&j.product; if(!p) continue;
+      const name=(p.product_name_fr||p.product_name||p.generic_name_fr||"").trim(), brand=(p.brands||"").split(",")[0].trim();
+      if(!name&&!brand) continue;
+      const out={found:true,source,name,brand,hint:p.quantity||"",image:p.image_front_small_url||p.image_small_url||"",
+        nutri:grade(p.nutriscore_grade),eco:grade(p.environmental_score_grade||p.ecoscore_grade),nova:Number(p.nova_group)||0,location:guessPlace(p.categories_tags)};
+      const keys=Object.keys(cache); if(keys.length>400) delete cache[keys[0]];
+      cache[code]=out; lsSet(OFF_CACHE,cache); return out;
+    }
+  }
+  return {found:false};
+}
+// What a scanned/typed text is: a product barcode, a JSON label, or free text
+function classify(text){
   text=(text||"").trim();
   try{ const j=JSON.parse(text); if(j&&typeof j==="object") return {name:j.name||j.nom||"",brand:j.brand||j.marque||"",expiry:j.expiry||j.dlc||"",qty:j.qty||1,unit:j.unit||"pcs",location:j.location||j.lieu||"Placard",code:j.code||"",raw:text}; }catch(e){}
-  if(/^\d{8,14}$/.test(text)){ const p=await lookup(text); return {code:text,...(p||{}),found:!!p,raw:text}; }
+  const digits=text.replace(/\s/g,"");
+  if(/^\d{8,14}$/.test(digits)) return {code:digits,raw:text};
+  const url=text.match(/(?:^|\/)(?:01\/)?(\d{14})(?:\/|$)/);         // GS1 Digital Link QR codes
+  if(url && validGtin(url[1])) return {code:url[1].replace(/^0+(?=\d{13}$)/,""),raw:text};
   return {name:text.slice(0,80),raw:text};
 }
 
-/* ---------- Barcode decoding ---------- */
-function zxingReader(){
-  if(!window.ZXing) throw new Error("zxing");
-  const hints=new Map(); hints.set(ZXing.DecodeHintType.TRY_HARDER,true);
-  return new ZXing.BrowserMultiFormatReader(hints);
+/* ---------- Barcode detection ----------
+   1. native BarcodeDetector (Android Chrome), 2. ZXing-C++ in WebAssembly (iPhone & the rest),
+   3. ZXing JS as last resort. */
+const SCAN_FORMATS=["ean_13","ean_8","upc_a","upc_e","qr_code","code_128","data_matrix"];
+let detectorP=null, zx=null;
+function getDetector(){
+  if(detectorP) return detectorP;
+  detectorP=(async()=>{
+    if("BarcodeDetector" in window){
+      try{ const sup=await BarcodeDetector.getSupportedFormats(); const f=SCAN_FORMATS.filter(x=>sup.includes(x));
+        if(f.includes("ean_13")) return new BarcodeDetector({formats:f}); }catch(e){}
+    }
+    try{
+      const m=await import("https://fastly.jsdelivr.net/npm/barcode-detector@3.1.3/dist/es/ponyfill.min.js");
+      const d=new m.BarcodeDetector({formats:SCAN_FORMATS});
+      try{ const c=document.createElement("canvas"); c.width=c.height=16; await d.detect(c); }catch(e){} // loads the wasm now
+      return d;
+    }catch(e){ return null; }
+  })();
+  return detectorP;
 }
+function zxingDecode(canvas){
+  if(!window.ZXing||!ZXing.HTMLCanvasElementLuminanceSource) return null;
+  if(!zx){ const F=ZXing.BarcodeFormat, hints=new Map();
+    hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS,[F.EAN_13,F.EAN_8,F.UPC_A,F.UPC_E,F.QR_CODE,F.CODE_128,F.DATA_MATRIX]);
+    hints.set(ZXing.DecodeHintType.TRY_HARDER,true); zx=new ZXing.MultiFormatReader(); zx.setHints(hints); }
+  try{ const r=zx.decode(new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(new ZXing.HTMLCanvasElementLuminanceSource(canvas))));
+    return {rawValue:r.getText(),format:String(ZXing.BarcodeFormat[r.getBarcodeFormat()]||"").toLowerCase()}; }
+  catch(e){ return null; }
+}
+async function detectIn(canvas){
+  const d=await getDetector();
+  if(d){ try{ const r=await d.detect(canvas); if(r&&r.length) return r; }catch(e){} return []; }
+  const z=zxingDecode(canvas); return z?[z]:[];
+}
+// A retail barcode must pass its check digit; anything else must be read twice in a row
+const isRetail=(h)=>/^(ean_13|ean_8|upc_a)$/.test(h.format||"")||(!h.format&&/^\d{8,14}$/.test(h.rawValue||""));
 async function decodeImageFile(file){
   let bmp;
   try{ bmp=await createImageBitmap(file,{imageOrientation:"from-image"}); }
   catch(e){ bmp=await new Promise((ok,ko)=>{ const i=new Image(); i.onload=()=>ok(i); i.onerror=ko; i.src=URL.createObjectURL(file); }); }
   const w=bmp.width,h=bmp.height;
-  if("BarcodeDetector" in window){ try{ const r=await new BarcodeDetector().detect(bmp); if(r[0]) return r[0].rawValue; }catch(e){} }
-  const reader=zxingReader();
-  for(const max of [1400,900,2000]){
+  for(const max of [1600,1000,2400]){
     const k=Math.min(1,max/Math.max(w,h)); const c=document.createElement("canvas");
-    c.width=Math.round(w*k); c.height=Math.round(h*k); c.getContext("2d").drawImage(bmp,0,0,c.width,c.height);
-    try{ const res=await reader.decodeFromImageUrl(c.toDataURL("image/jpeg",0.92)); return res.getText(); }catch(e){}
+    c.width=Math.round(w*k); c.height=Math.round(h*k); c.getContext("2d",{willReadFrequently:true}).drawImage(bmp,0,0,c.width,c.height);
+    const hits=(await detectIn(c)).filter(x=>x.rawValue&&(!isRetail(x)||validGtin(x.rawValue.trim())));
+    if(hits.length) return hits[0].rawValue.trim();
   }
   throw new Error("notfound");
 }
+if("requestIdleCallback" in window) requestIdleCallback(()=>getDetector()); else setTimeout(getDetector,1500);
 
 /* ---------- Icons ---------- */
 const I = {
@@ -667,6 +748,7 @@ const I = {
   cart: html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h2.2l2.3 11h10.8l2-8H6.3"/><circle cx="9.5" cy="19.5" r="1.3"/><circle cx="17" cy="19.5" r="1.3"/></svg>`,
   pen: html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>`,
   cloud: html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18.5a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 9.5a4.5 4.5 0 0 1-.5 9z"/><path d="M12 16v-5M9.5 13.5 12 11l2.5 2.5"/></svg>`,
+  torch: html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2h8v4l-2 3v13h-4V9L8 6z"/><path d="M12 13v2"/></svg>`,
   camera: html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>`,
 };
 
@@ -695,6 +777,8 @@ function Barcode({code}){
   for(let i=0;i<s.length*2;i++){ const d=+s[i%s.length]; const w=1+((d+i)%3); if(i%2===0) bars.push(html`<rect key=${i} x=${x} y="0" width=${w} height="38" fill="currentColor"/>`); x+=w+1+(d%2); }
   return html`<svg viewBox=${`0 0 ${x} 38`} preserveAspectRatio="none" aria-hidden="true">${bars}</svg>`;
 }
+const NUTRI_C={a:"#038141",b:"#85bb2f",c:"#fecb02",d:"#ee8100",e:"#e63e11"};
+function Score({label,g}){ return g ? html`<span class="score" style=${{"--sc":NUTRI_C[g]}}><small>${label}</small><b>${g.toUpperCase()}</b></span>` : null; }
 function Ticket({p,count}){
   const now=new Date();
   return html`<div class="ticket" aria-label="Ticket de scan">
@@ -702,11 +786,15 @@ function Ticket({p,count}){
     <div class="r"><span>${now.toLocaleDateString("fr-FR")}</span><span>${now.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"})}</span></div>
     <hr/>
     <div class="r"><span>SCAN N°</span><span>${String(count).padStart(4,"0")}</span></div>
-    <div class="t-big">${p.name||"Article non référencé"}</div>
+    <div class="t-prod">
+      <div class="t-big">${p.loading?html`<span class="blink">RECHERCHE DU PRODUIT…</span>`:(p.name||"Article non référencé")}</div>
+      ${p.image && html`<img class="t-img" src=${p.image} alt="" referrerpolicy="no-referrer"/>`}
+    </div>
     ${p.brand && html`<div class="r"><span>MARQUE</span><span>${p.brand.toUpperCase()}</span></div>`}
     ${p.hint && html`<div class="r"><span>FORMAT</span><span>${p.hint}</span></div>`}
     ${p.code && html`<div class="r"><span>EAN</span><span>${p.code}</span></div>`}
-    <div class="r"><span>SOURCE</span><span>${p.found?"OPEN FOOD FACTS":p.code?"À COMPLÉTER":"QR CODE"}</span></div>
+    ${(p.nutri||p.eco||p.nova>0) && html`<div class="t-scores"><${Score} label="NUTRI" g=${p.nutri}/>${p.nova>0 && html`<span class="score nova n${p.nova}"><small>NOVA</small><b>${p.nova}</b></span>`}<${Score} label="ÉCO" g=${p.eco}/></div>`}
+    <div class="r"><span>SOURCE</span><span>${p.loading?"…":p.found?p.source:p.offline?"HORS LIGNE":p.code?"INCONNU · À COMPLÉTER":"QR CODE"}</span></div>
     <hr/>
     <${Barcode} code=${p.code||p.raw}/>
   </div>`;
@@ -714,32 +802,61 @@ function Ticket({p,count}){
 
 /* ---------- Scanner ---------- */
 function Scanner({onResult,onClose}){
-  const video=useRef(null), reader=useRef(null), done=useRef(false);
+  const video=useRef(null), stream=useRef(null), done=useRef(false), timer=useRef(0), last=useRef({v:"",n:0});
   const [mode,setMode]=useState("starting"); const [err,setErr]=useState(""); const [typed,setTyped]=useState("");
-  const [closing,setClosing]=useState(false);
-  const finish=(text)=>{ if(done.current) return; done.current=true; try{reader.current&&reader.current.reset();}catch(e){}
-    setMode("found"); scanBeep(); buzz(70); setTimeout(()=>onResult(text),REDUCED?0:520); };
-  const close=()=>{ done.current=true; try{reader.current&&reader.current.reset();}catch(e){} setClosing(true); setTimeout(onClose,REDUCED?0:200); };
+  const [closing,setClosing]=useState(false); const [torch,setTorch]=useState(null); const [slow,setSlow]=useState(false);
+  const stop=()=>{ done.current=true; clearTimeout(timer.current); if(stream.current) stream.current.getTracks().forEach(t=>t.stop()); };
+  const finish=(text)=>{ if(done.current) return; stop(); setMode("found"); scanBeep(); buzz(70); setTimeout(()=>onResult(text),REDUCED?0:450); };
+  const close=()=>{ stop(); setClosing(true); setTimeout(onClose,REDUCED?0:200); };
   useEffect(()=>{
+    let tick=0; const canvas=document.createElement("canvas"); const ctx=canvas.getContext("2d",{willReadFrequently:true});
+    const t0=Date.now();
+    const loop=async()=>{
+      if(done.current) return;
+      const v=video.current;
+      if(v && v.readyState>=2 && v.videoWidth){
+        const vw=v.videoWidth, vh=v.videoHeight, full=(tick++%3===2);
+        const cw=full?vw:Math.round(vw*0.9), ch=full?vh:Math.round(vh*(vh>vw?0.42:0.62));
+        const k=Math.min(1,1280/Math.max(cw,ch)); canvas.width=Math.round(cw*k); canvas.height=Math.round(ch*k);
+        ctx.drawImage(v,(vw-cw)/2,(vh-ch)/2,cw,ch,0,0,canvas.width,canvas.height);
+        const hits=await detectIn(canvas);
+        for(const h of hits){
+          const val=(h.rawValue||"").trim(); if(!val) continue;
+          if(isRetail(h)){ if(validGtin(val)) return finish(val); continue; }
+          if(last.current.v===val){ if(++last.current.n>=2) return finish(val); } else last.current={v:val,n:1};
+        }
+        if(!slow && Date.now()-t0>7000) setSlow(true);
+      }
+      timer.current=setTimeout(loop,60);
+    };
     (async()=>{
       try{
-        if(!navigator.mediaDevices?.getUserMedia) throw new Error("no cam");
-        const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}});
-        s.getTracks().forEach(t=>t.stop());
-        if(done.current) return;
-        reader.current=zxingReader(); setMode("live");
-        await reader.current.decodeFromConstraints({video:{facingMode:"environment",width:{ideal:1280}}},video.current,(res)=>{ if(res) finish(res.getText()); });
+        if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia) throw new Error("no cam");
+        const s=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:"environment"},width:{ideal:1920},height:{ideal:1080}}});
+        if(done.current){ s.getTracks().forEach(t=>t.stop()); return; }
+        stream.current=s; const track=s.getVideoTracks()[0];
+        try{ const caps=track.getCapabilities?track.getCapabilities():{};
+          if(caps.focusMode&&caps.focusMode.includes("continuous")) await track.applyConstraints({advanced:[{focusMode:"continuous"}]});
+          if(caps.torch) setTorch(false); }catch(e){}
+        const v=video.current; v.srcObject=s; v.setAttribute("playsinline",""); v.muted=true; await v.play().catch(()=>{});
+        setMode("live"); getDetector().then(()=>{ if(!done.current) loop(); });
       }catch(e){ if(!done.current) setMode("photo"); }
     })();
-    return ()=>{ done.current=true; try{reader.current&&reader.current.reset();}catch(e){} };
+    return ()=>stop();
   },[]);
+  const toggleTorch=async()=>{ const t=stream.current&&stream.current.getVideoTracks()[0]; if(!t) return;
+    try{ await t.applyConstraints({advanced:[{torch:!torch}]}); setTorch(!torch); buzz(8); }catch(e){} };
   const onPhoto=async(e)=>{ const f=e.target.files[0]; e.target.value=""; if(!f) return; setErr(""); setMode("reading");
     try{ finish(await decodeImageFile(f)); }
     catch(x){ setMode("photo"); buzz([30,60,30]); setErr("Pas de code lisible sur cette photo. Rapprochez-vous, tenez le code bien à plat et évitez les reflets."); } };
-  const msg = {starting:"Ouverture de la caméra…", live:"Visez le code-barres ou le QR code.", photo:"Prenez le code en photo : il est lu dès que la photo est prise.", reading:"Lecture du code…", found:"Bip ! Article reconnu."}[mode];
+  const msg = {starting:"Ouverture de la caméra…", live: slow?"Reculez un peu pour que le code soit net, et évitez les reflets.":"Visez le code-barres, il est lu tout seul.", photo:"Prenez le code en photo : il est lu dès que la photo est prise.", reading:"Lecture du code…", found:"Bip ! Code lu."}[mode];
   const ghost = useMemo(()=>Array.from({length:28},(_,i)=>1+((i*7)%4)),[]);
   return html`<div class=${"scan "+mode+(closing?" out":"")} role="dialog" aria-modal="true" aria-label="Scanner">
-    <div class="scan-top"><b>Scanner</b><button class="scan-x press" aria-label="Fermer le scanner" onClick=${close}>${I.close}</button></div>
+    <div class="scan-top"><b>Scanner</b>
+      <div class="scan-tools">
+        ${torch!==null && html`<button class=${"scan-x press"+(torch?" on":"")} aria-label=${torch?"Éteindre la lampe":"Allumer la lampe"} aria-pressed=${torch} onClick=${toggleTorch}>${I.torch}</button>`}
+        <button class="scan-x press" aria-label="Fermer le scanner" onClick=${close}>${I.close}</button>
+      </div></div>
     <div class="stage">
       <video ref=${video} playsInline muted autoPlay hidden=${mode!=="live"&&mode!=="found"}></video>
       <div class="frame">
@@ -754,7 +871,7 @@ function Scanner({onResult,onClose}){
       ${(mode==="photo"||mode==="reading") && html`<label class="cam press">${I.camera} Photographier le code
         <input id="photo" type="file" accept="image/*" capture="environment" onChange=${onPhoto} onClick=${unlockAudio} /></label>`}
       <form class="typed" onSubmit=${e=>{e.preventDefault(); const v=typed.trim(); if(v) finish(v);}}>
-        <input id="typed-code" inputmode="numeric" autocomplete="off" placeholder="Ou tapez le code…" value=${typed} onChange=${e=>setTyped(e.target.value)} />
+        <input id="typed-code" inputmode="numeric" autocomplete="off" placeholder="Ou tapez les chiffres sous le code…" value=${typed} onChange=${e=>setTyped(e.target.value)} />
         <button class="press" type="submit">OK</button>
       </form>
     </div>
@@ -762,23 +879,29 @@ function Scanner({onResult,onClose}){
 }
 
 /* ---------- Editor ---------- */
+const FILLED=["name","brand","location","image","nutri","nova","eco"];
 function Editor({initial,scanCount,onSave,onDelete,onClose}){
   const [f,setF]=useState({qty:1,unit:"pcs",location:"Frigo",expiry:"",name:"",brand:"",code:"",...initial});
-  const set=(k)=>(e)=>setF(v=>({...v,[k]:e.target.value}));
+  const touched=useRef(new Set());
+  const set=(k)=>(e)=>{ touched.current.add(k); setF(v=>({...v,[k]:e.target.value})); };
+  // the product lookup finishes after the sheet opened: fill what the person has not typed yet
+  useEffect(()=>{ if(initial.loading) return;
+    setF(v=>{ const n={...v}; FILLED.forEach(k=>{ if(!touched.current.has(k) && initial[k]!=null && initial[k]!=="") n[k]=initial[k]; }); return n; });
+  },[initial.loading]);
   const isNew=!initial.id;
   const quick=[["+3 j",3],["+1 sem.",7],["+1 mois",30],["+6 mois",182]];
   return html`<${Sheet} label="Article" onClose=${onClose}>${(close)=>html`
     ${initial.scanned && html`<${Ticket} p=${initial} count=${scanCount}/>`}
     <h2>${isNew?(initial.scanned?"Ranger cet article":"Nouvel article"):"Modifier"}</h2>
     <form class="form" onSubmit=${e=>{e.preventDefault(); if(!f.name.trim()) return;
-      const {found,hint,scanned,raw,...clean}=f;
+      const {found,hint,scanned,raw,loading,offline,source,...clean}=f;
       onSave({...clean,name:f.name.trim(),qty:Math.max(0,Number(f.qty)||0),id:f.id||uid(),addedAt:f.addedAt||Date.now()}); buzz(15); close();}}>
-      <label class="field">Produit<input id="f-name" required value=${f.name} onChange=${set("name")} placeholder="Ex. Riz basmati" autoComplete="off" /></label>
+      <label class="field">Produit<input id="f-name" required value=${f.name} onChange=${set("name")} placeholder=${initial.loading?"Recherche en cours…":"Ex. Riz basmati"} autoComplete="off" /></label>
       <label class="field">Marque<input id="f-brand" value=${f.brand} onChange=${set("brand")} placeholder="Facultatif" autoComplete="off" /></label>
       <div class="field">Rangé où ?
         <div class="places" role="group" aria-label="Emplacement">
           ${PLACES.map(p=>html`<button type="button" key=${p.id} class="place press" style=${{"--c":p.c}} aria-pressed=${f.location===p.id}
-            onClick=${()=>setF(v=>({...v,location:p.id}))}><i></i>${p.id==="Congélateur"?"Congél.":p.id}</button>`)}
+            onClick=${()=>{ touched.current.add("location"); setF(v=>({...v,location:p.id})); }}><i></i>${p.id==="Congélateur"?"Congél.":p.id}</button>`)}
         </div></div>
       <div class="two">
         <label class="field">Quantité<input id="f-qty" type="number" min="0" step="any" inputmode="decimal" value=${f.qty} onChange=${set("qty")} /></label>
@@ -795,13 +918,16 @@ function Editor({initial,scanCount,onSave,onDelete,onClose}){
 }
 
 /* ---------- Rows ---------- */
+const Face=({it})=> it.image
+  ? html`<b class="photo"><img src=${it.image} alt="" loading="lazy" referrerpolicy="no-referrer" onError=${e=>{ e.currentTarget.parentNode.classList.remove("photo"); e.currentTarget.replaceWith(document.createTextNode(initials(it.name))); }}/></b>`
+  : html`<b>${initials(it.name)}</b>`;
 function StockCard({it,i,onOpen,onStep}){
   const st=status(it), lab=expLabel(it);
   return html`<div class="card" style=${{"--i":Math.min(i,10),"--c":placeColor(it.location),"--rc":ringColor[st],viewTransitionName:"c-"+it.id}}>
-    <div class="ring" style=${{"--p":ringPct(it)}} aria-hidden="true"><b>${initials(it.name)}</b></div>
+    <div class="ring" style=${{"--p":ringPct(it)}} aria-hidden="true"><${Face} it=${it}/></div>
     <button class="info" onClick=${()=>onOpen(it)}>
       <div class="name">${it.name}</div>
-      <div class="sub">${lab && html`<span class="exp">${lab}</span>`}${it.brand && html`<span>${it.brand}</span>`}</div>
+      <div class="sub">${lab && html`<span class="exp">${lab}</span>`}${it.nutri && html`<span class="ns" style=${{"--sc":NUTRI_C[it.nutri]}}>${it.nutri.toUpperCase()}</span>`}${it.brand && html`<span>${it.brand}</span>`}</div>
     </button>
     <div class="step">
       <button class="press" aria-label=${"Retirer un "+it.name} onClick=${()=>onStep(it,-1)}>${I.minus}</button>
@@ -812,7 +938,7 @@ function StockCard({it,i,onOpen,onStep}){
 }
 function CourseCard({it,i,onBuy,onRemove,onOpen}){
   return html`<div class="card" style=${{"--i":Math.min(i,10),"--c":placeColor(it.location),"--rc":"var(--line)",viewTransitionName:"c-"+it.id}}>
-    <div class="ring" style=${{"--p":0}} aria-hidden="true"><b>${initials(it.name)}</b></div>
+    <div class="ring" style=${{"--p":0}} aria-hidden="true"><${Face} it=${it}/></div>
     <button class="info" onClick=${()=>onOpen(it)}>
       <div class="name">${it.name}</div>
       <div class="sub"><span>${it.location}</span>${it.brand && html`<span>${it.brand}</span>`}</div>
@@ -830,7 +956,7 @@ function App(){
   const [tab,setTab]=useState("stock");
   const [q,setQ]=useState(""); const [place,setPlace]=useState("Tout");
   const [scan,setScan]=useState(false); const [edit,setEdit]=useState(null);
-  const [toast,setToast]=useState(null); const [busy,setBusy]=useState(false);
+  const [toast,setToast]=useState(null);
   const [scanCount,setScanCount]=useState(()=>{ try{ return +localStorage.getItem("gm-scans")||0; }catch(e){ return 0; } });
 
   const stock=items.filter(i=>(Number(i.qty)||0)>0);
@@ -852,13 +978,15 @@ function App(){
   const go=(t)=>{ if(t!==tab){ buzz(6); vt(()=>{ setTab(t); }); window.scrollTo({top:0,behavior:REDUCED?"auto":"smooth"}); } };
 
   const openScan=()=>{ unlockAudio(); buzz(10); setScan(true); };
-  const onScanned=async(text)=>{
-    setScan(false); setBusy(true);
+  const onScanned=(text)=>{
+    setScan(false);
     const n=scanCount+1; setScanCount(n); try{ localStorage.setItem("gm-scans",n); }catch(e){}
-    const p=await parseScan(text); setBusy(false);
+    const p=classify(text);
     const existing=p.code&&items.find(i=>i.code===p.code);
     if(existing){ const nq=(Number(existing.qty)||0)+1; vt(()=>put({...existing,qty:nq})); flash(`+1 ${existing.name} · ${nq} ${qtyText(existing)||"en stock"}`); return; }
-    setEdit({...p,scanned:true});
+    if(!p.code){ setEdit({...p,scanned:true}); return; }
+    setEdit({...p,scanned:true,loading:true,location:"Placard"});
+    lookup(p.code).then(r=>setEdit(e=> e&&e.scanned&&e.code===p.code ? {...e,...r,loading:false} : e));
   };
 
   const wd=new Date().toLocaleDateString("fr-FR",{weekday:"short",day:"numeric",month:"short"}).replace(/\./g,"");
@@ -867,7 +995,7 @@ function App(){
 
   return html`<div class="app">
     <header class="top">
-      <div><div class="date">${wd}${busy?" · recherche du produit…":""}</div><h1>${titles[tab]}</h1></div>
+      <div><div class="date">${wd}</div><h1>${titles[tab]}</h1></div>
       <div class="top-act"><button class="round ghost press" aria-label=${"Synchronisation : "+SYNC_LABEL[sync]} onClick=${()=>setSyncOpen(true)}>${I.cloud}<span class="sdot" style=${{background:SYNC_COLOR[sync]}}></span></button>
       <button class="round press" aria-label="Ajouter un article à la main" onClick=${()=>setEdit({location:place!=="Tout"?place:"Frigo"})}>${I.plus}</button></div>
     </header>
