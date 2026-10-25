@@ -1,5 +1,5 @@
 // Garde-manger service worker: app shell + libraries cached for offline use.
-const CACHE = "garde-manger-v3";
+const CACHE = "garde-manger-v4";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icons/icon-192.png", "./icons/icon-512.png",
   "https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js",
   "https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js",

@@ -63,6 +63,16 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 h1{font-family:var(--f-display);font-weight:800;font-size:clamp(1.75rem,8vw,2.3rem);letter-spacing:-.035em;line-height:1;margin:6px 0 0;text-wrap:balance}
 .round{width:46px;height:46px;flex:none;border-radius:16px;border:0;background:var(--ink);color:var(--bg);display:grid;place-items:center;box-shadow:var(--shadow)}
 .round svg{width:22px;height:22px}
+.round.ghost{background:var(--surface);color:var(--ink);position:relative}
+.top-act{display:flex;gap:8px}
+.sdot{position:absolute;top:9px;right:9px;width:9px;height:9px;border-radius:50%;border:2px solid var(--surface)}
+.sync-state{display:flex;gap:12px;align-items:flex-start;background:var(--surface);border-radius:18px;padding:14px;margin-bottom:16px}
+.sync-state>i{flex:none;width:12px;height:12px;margin-top:4px;border-radius:50%;background:var(--rc);box-shadow:0 0 0 5px color-mix(in srgb,var(--rc) 20%,transparent)}
+.sync-state div{display:grid;gap:3px;min-width:0}
+.sync-state span{font-size:.82rem;color:var(--muted);overflow-wrap:anywhere}
+.form-err{margin:0;color:var(--bad);font-size:.88rem}
+.hint{margin:0;font-size:.8rem;color:var(--muted)}
+.btn:disabled{opacity:.6}
 
 /* Freshness card */
 .fresh{margin-top:20px;background:var(--surface);border-radius:26px;padding:18px;box-shadow:var(--shadow);display:grid;gap:14px}
@@ -259,7 +269,7 @@ const expLabel = (it) => { const d=daysLeft(it.expiry); if(d===null) return null
   if(d<0) return `PÉRIMÉ · ${-d} J`; if(d===0) return "AUJOURD'HUI"; if(d===1) return "DEMAIN";
   if(d<=30) return `J−${d}`; return new Date(it.expiry+"T00:00:00").toLocaleDateString("fr-FR",{day:"2-digit",month:"short",year:"2-digit"}).toUpperCase(); };
 const initials = (n) => { const w=(n||"?").replace(/[^\p{L}\p{N} ]/gu,"").trim().split(/\s+/); return ((w[0]||"?")[0]+((w[1]||w[0]||"")[w[1]?0:1]||"")).toUpperCase(); };
-const uid = () => "i"+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+const uid = () => { const a="abcdefghijklmnopqrstuvwxyz0123456789"; const r=crypto.getRandomValues(new Uint8Array(15)); let s=""; r.forEach(b=>{ s+=a[b%36]; }); return s; };
 const qtyText = (it) => it.unit==="pcs" ? "" : it.unit;
 
 const DEMO = [
@@ -304,16 +314,77 @@ function scanBeep(){
   }catch(e){}
 }
 
-/* ---------- Storage: shared db on claude.ai, localStorage when self-hosted ---------- */
-function loadLocal(){ try{ const r=localStorage.getItem(LS_KEY); return r?JSON.parse(r):null; }catch(e){ return null; } }
-function saveLocal(items){ try{ localStorage.setItem(LS_KEY,JSON.stringify(items)); }catch(e){} }
+/* ---------- Storage ----------
+   1. localStorage: always, as the on-device cache (works offline).
+   2. PocketBase: when the user signs in to their own server, changes go through a queue and sync in real time.
+   3. claude.ai shared db: only when the page runs as a claude.ai artifact. */
+const lsGet=(k,d)=>{ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):d; }catch(e){ return d; } };
+const lsSet=(k,v)=>{ try{ v==null?localStorage.removeItem(k):localStorage.setItem(k,JSON.stringify(v)); }catch(e){} };
+function loadLocal(){ return lsGet(LS_KEY,null); }
+function saveLocal(items){ lsSet(LS_KEY,items); }
+const PB_KEY="gm-pocketbase", Q_KEY="gm-sync-queue";
+const PB_FIELDS=["name","brand","code","qty","unit","location","expiry","addedAt"];
+const isPbId=(id)=>/^[a-z0-9]{15}$/.test(id||"");
+const toRec=(it)=>{ const r={}; PB_FIELDS.forEach(f=>{ r[f]= it[f]!=null ? it[f] : (f==="qty"||f==="addedAt"?0:""); }); r.qty=Number(r.qty)||0; return r; };
+const fromRec=(r)=>{ const it={id:r.id}; PB_FIELDS.forEach(f=>{ it[f]=r[f]; }); it.qty=Number(it.qty)||0; it.addedAt=Number(it.addedAt)||0; return it; };
+
+function pbReq(cfg,path,opt={}){
+  const headers={"Content-Type":"application/json"}; if(cfg.token) headers.Authorization=cfg.token;
+  return fetch(cfg.url+path,{...opt,headers}).then(async r=>{
+    if(r.status===204) return null;
+    const j=await r.json().catch(()=>null);
+    if(!r.ok){ const e=new Error((j&&j.message)||("Erreur "+r.status)); e.status=r.status; throw e; }
+    return j;
+  });
+}
+
 function useStock(){
   const [items,setItems] = useState(()=> loadLocal() ?? DEMO);
-  const db = useRef(null);
+  const [pb,setPb] = useState(()=> lsGet(PB_KEY,null));            // {url, token, email}
+  const [sync,setSync] = useState(()=> lsGet(PB_KEY,null) ? "connecting" : "local"); // local | connecting | live | offline | error
+  const [pending,setPending] = useState(()=> lsGet(Q_KEY,[]).length);
+  const db = useRef(null), itemsRef = useRef(items), cfg = useRef(pb), queue = useRef(lsGet(Q_KEY,[])), flushing = useRef(false);
+  itemsRef.current = items; cfg.current = pb;
+
+  const saveQ = ()=>{ lsSet(Q_KEY,queue.current); setPending(queue.current.length); };
+  const enqueue = (op)=>{ const id=op.op==="put"?op.it.id:op.id;
+    queue.current = queue.current.filter(o=>(o.op==="put"?o.it.id:o.id)!==id); queue.current.push(op); saveQ(); };
+  const pendingIds = ()=> new Set(queue.current.map(o=>o.op==="put"?o.it.id:o.id));
+
+  const flush = async()=>{
+    const c=cfg.current; if(!c||!c.token||flushing.current) return true; flushing.current=true;
+    try{
+      while(queue.current.length){
+        const op=queue.current[0];
+        if(op.op==="put"){
+          try{ await pbReq(c,`/api/collections/stock/records/${op.it.id}`,{method:"PATCH",body:JSON.stringify(toRec(op.it))}); }
+          catch(e){ if(e.status!==404) throw e;
+            await pbReq(c,`/api/collections/stock/records`,{method:"POST",body:JSON.stringify({id:op.it.id,...toRec(op.it)})}); }
+        } else {
+          try{ await pbReq(c,`/api/collections/stock/records/${op.id}`,{method:"DELETE"}); }catch(e){ if(e.status!==404) throw e; }
+        }
+        queue.current.shift(); saveQ();
+      }
+      return true;
+    }catch(e){ setSync(e.status===401||e.status===403?"error":"offline"); return false; }
+    finally{ flushing.current=false; }
+  };
+
+  const pull = async()=>{
+    const c=cfg.current; let all=[];
+    for(let p=1;;p++){ const j=await pbReq(c,`/api/collections/stock/records?page=${p}&perPage=500&skipTotal=1`); all=all.concat(j.items); if(j.items.length<500) break; }
+    const pend=pendingIds(); const deleted=new Set(queue.current.filter(o=>o.op==="del").map(o=>o.id));
+    const keep=itemsRef.current.filter(i=>pend.has(i.id)&&!deleted.has(i.id));
+    vt(()=>setItems([...all.map(fromRec).filter(i=>!pend.has(i.id)),...keep]));
+  };
+  const resync = async()=>{ if(!cfg.current) return; setSync("connecting");
+    try{ if(await flush()){ await pull(); setSync("live"); } }catch(e){ setSync(e.status===401||e.status===403?"error":"offline"); } };
+
+  // claude.ai artifact storage (ignored when self-hosted)
   useEffect(()=>{
     let unsub=null, alive=true;
     const connect=(tries)=>{
-      if(!alive) return;
+      if(!alive||cfg.current) return;
       if(!(window.claude && window.claude.use)){ if(tries>0) setTimeout(()=>connect(tries-1),300); return; }
       window.claude.use("db").then(d=>{
         if(!d||!alive) return; db.current=d;
@@ -323,11 +394,96 @@ function useStock(){
     connect(10);
     return ()=>{alive=false; unsub&&unsub();};
   },[]);
+
+  // PocketBase: refresh the session, then live updates over server-sent events
+  useEffect(()=>{
+    if(!pb||!pb.token){ setSync("local"); return; }
+    let es=null, alive=true; setSync("connecting");
+    (async()=>{
+      try{
+        const r=await pbReq(cfg.current,"/api/collections/users/auth-refresh",{method:"POST"});
+        if(r&&r.token){ const n={...cfg.current,token:r.token}; cfg.current=n; lsSet(PB_KEY,n); }
+      }catch(e){ if(e.status===401||e.status===403){ if(alive) setSync("error"); return; } }
+      if(!alive) return;
+      es=new EventSource(cfg.current.url+"/api/realtime");
+      es.addEventListener("PB_CONNECT",async e=>{
+        try{
+          const {clientId}=JSON.parse(e.data);
+          await pbReq(cfg.current,"/api/realtime",{method:"POST",body:JSON.stringify({clientId,subscriptions:["stock/*"]})});
+          await resync();
+        }catch(x){ setSync("offline"); }
+      });
+      es.addEventListener("stock/*",e=>{
+        let m; try{ m=JSON.parse(e.data); }catch(x){ return; }
+        if(!m||!m.record||pendingIds().has(m.record.id)) return;
+        const it=fromRec(m.record);
+        vt(()=>setItems(p=>{ if(m.action==="delete") return p.filter(i=>i.id!==it.id);
+          const i=p.findIndex(x=>x.id===it.id); const n=[...p]; i<0?n.push(it):n[i]=it; return n; }));
+      });
+      es.onerror=()=>setSync(s=>s==="error"?s:"offline");
+    })();
+    const online=()=>resync(); addEventListener("online",online);
+    return ()=>{ alive=false; es&&es.close(); removeEventListener("online",online); };
+  },[pb&&pb.url,pb&&pb.token]);
+
   useEffect(()=>{ if(!db.current) saveLocal(items); },[items]);
+
+  const isDemo=(id)=>{ const it=itemsRef.current.find(x=>x.id===id); return !!(it&&it.demo); };
   const put = (it)=>{ setItems(p=>{const i=p.findIndex(x=>x.id===it.id); const n=[...p]; i<0?n.push(it):n[i]=it; return n;});
-    if(db.current) db.current.collection("stock").doc(it.id).set(it).catch(()=>{}); };
-  const del = (id)=>{ setItems(p=>p.filter(x=>x.id!==id)); if(db.current) db.current.collection("stock").doc(id).delete().catch(()=>{}); };
-  return {items,put,del};
+    if(cfg.current&&cfg.current.token){ if(!it.demo){ enqueue({op:"put",it}); flush(); } }
+    else if(db.current) db.current.collection("stock").doc(it.id).set(it).catch(()=>{}); };
+  const del = (id)=>{ const demo=isDemo(id); setItems(p=>p.filter(x=>x.id!==id));
+    if(cfg.current&&cfg.current.token){ if(!demo){ enqueue({op:"del",id}); flush(); } }
+    else if(db.current) db.current.collection("stock").doc(id).delete().catch(()=>{}); };
+
+  const login = async(url,email,password)=>{
+    url=url.trim().replace(/\/+$/,""); if(!/^https?:\/\//.test(url)) url="https://"+url;
+    if(location.protocol==="https:"&&url.startsWith("http:")){ const e=new Error("Le serveur doit être en HTTPS : un site HTTPS ne peut pas parler à un serveur HTTP."); throw e; }
+    let r;
+    try{ r=await pbReq({url},"/api/collections/users/auth-with-password",{method:"POST",body:JSON.stringify({identity:email.trim(),password})}); }
+    catch(e){ if(!e.status) throw new Error("Serveur injoignable. Vérifiez l'adresse et que PocketBase tourne.");
+      if(e.status===400) throw new Error("E-mail ou mot de passe incorrect."); throw e; }
+    // send what is already on this phone (examples excluded), with ids PocketBase accepts
+    const mine=itemsRef.current.filter(i=>!i.demo).map(i=>isPbId(i.id)?i:{...i,id:uid()});
+    setItems(p=>[...p.filter(i=>i.demo),...mine]);
+    mine.forEach(it=>enqueue({op:"put",it}));
+    const n={url,token:r.token,email:(r.record&&r.record.email)||email.trim()};
+    lsSet(PB_KEY,n); cfg.current=n; setPb(n);
+  };
+  const logout = ()=>{ lsSet(PB_KEY,null); queue.current=[]; saveQ(); cfg.current=null; setPb(null); };
+
+  return {items,put,del,sync,pb,pending,login,logout,resync};
+}
+
+/* ---------- Sync settings ---------- */
+const SYNC_LABEL={local:"Sur ce téléphone uniquement",connecting:"Connexion…",live:"Synchronisé",offline:"Hors ligne · en attente",error:"Session expirée"};
+const SYNC_COLOR={local:"var(--muted)",connecting:"var(--warn)",live:"var(--ok)",offline:"var(--warn)",error:"var(--bad)"};
+function SyncSheet({store,onClose}){
+  const {pb,sync,pending,login,logout,resync}=store;
+  const [url,setUrl]=useState(pb?pb.url:""); const [email,setEmail]=useState(pb?pb.email:""); const [pw,setPw]=useState("");
+  const [err,setErr]=useState(""); const [busy,setBusy]=useState(false);
+  const submit=async(e)=>{ e.preventDefault(); setErr(""); setBusy(true);
+    try{ await login(url,email,pw); setPw(""); buzz(15); }catch(x){ setErr(x.message); buzz([30,60,30]); } finally{ setBusy(false); } };
+  const connected = pb && sync!=="error";
+  return html`<${Sheet} label="Synchronisation" onClose=${onClose}>${(close)=>html`
+    <h2>Synchronisation</h2>
+    <div class="sync-state" style=${{"--rc":SYNC_COLOR[sync]}}><i></i><div><b>${SYNC_LABEL[sync]}</b>
+      <span>${pb?`${pb.email} · ${pb.url.replace(/^https?:\/\//,"")}`:"Connectez votre serveur PocketBase pour partager le stock entre plusieurs téléphones."}</span>
+      ${pending>0 && html`<span>${pending} modification${pending>1?"s":""} en attente d'envoi</span>`}</div></div>
+    ${connected ? html`<div class="actions">
+        <button type="button" class="btn del press" onClick=${()=>{logout(); buzz(10);}}>Se déconnecter</button>
+        <button type="button" class="btn main press" onClick=${()=>{resync(); buzz(10);}}>Synchroniser</button></div>`
+    : html`<form class="form" onSubmit=${submit}>
+        <label class="field">Adresse du serveur<input id="pb-url" inputmode="url" autocomplete="url" autocapitalize="off" spellcheck="false" placeholder="https://stock.mondomaine.fr" required value=${url} onChange=${e=>setUrl(e.target.value)} /></label>
+        <label class="field">E-mail<input id="pb-email" type="email" autocomplete="username" autocapitalize="off" required value=${email} onChange=${e=>setEmail(e.target.value)} /></label>
+        <label class="field">Mot de passe<input id="pb-pw" type="password" autocomplete="current-password" required value=${pw} onChange=${e=>setPw(e.target.value)} /></label>
+        ${err && html`<p class="form-err" role="alert">${err}</p>`}
+        <div class="actions">
+          ${pb && html`<button type="button" class="btn del press" onClick=${()=>logout()}>Oublier</button>`}
+          <button class="btn main press" type="submit" disabled=${busy}>${busy?"Connexion…":"Se connecter"}</button></div>
+        <p class="hint">Le stock déjà présent sur ce téléphone est envoyé sur le serveur à la connexion (sauf les exemples).</p>
+      </form>`}
+  `}<//>`;
 }
 
 /* ---------- Product lookup (Open Food Facts, self-hosted only) ---------- */
@@ -377,6 +533,7 @@ const I = {
   clock: html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2.5h6"/></svg>`,
   cart: html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h2.2l2.3 11h10.8l2-8H6.3"/><circle cx="9.5" cy="19.5" r="1.3"/><circle cx="17" cy="19.5" r="1.3"/></svg>`,
   pen: html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>`,
+  cloud: html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18.5a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 9.5a4.5 4.5 0 0 1-.5 9z"/><path d="M12 16v-5M9.5 13.5 12 11l2.5 2.5"/></svg>`,
   camera: html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>`,
 };
 
@@ -536,7 +693,7 @@ function CourseCard({it,i,onBuy,onRemove,onOpen}){
 
 /* ---------- App ---------- */
 function App(){
-  const {items,put,del}=useStock();
+  const store=useStock(); const {items,put,del,sync}=store; const [syncOpen,setSyncOpen]=useState(false);
   const [tab,setTab]=useState("stock");
   const [q,setQ]=useState(""); const [place,setPlace]=useState("Tout");
   const [scan,setScan]=useState(false); const [edit,setEdit]=useState(null);
@@ -579,7 +736,8 @@ function App(){
   return html`<div class="app">
     <header class="top">
       <div><div class="date">${wd}${busy?" · recherche du produit…":""}</div><h1>${titles[tab]}</h1></div>
-      <button class="round press" aria-label="Ajouter un article à la main" onClick=${()=>setEdit({location:place!=="Tout"?place:"Frigo"})}>${I.plus}</button>
+      <div class="top-act"><button class="round ghost press" aria-label=${"Synchronisation : "+SYNC_LABEL[sync]} onClick=${()=>setSyncOpen(true)}>${I.cloud}<span class="sdot" style=${{background:SYNC_COLOR[sync]}}></span></button>
+      <button class="round press" aria-label="Ajouter un article à la main" onClick=${()=>setEdit({location:place!=="Tout"?place:"Frigo"})}>${I.plus}</button></div>
     </header>
 
     ${tab==="stock" && html`<section class="fresh" aria-label="Fraîcheur du stock">
@@ -631,6 +789,7 @@ function App(){
       </div>
     </nav>
 
+    ${syncOpen && html`<${SyncSheet} store=${store} onClose=${()=>setSyncOpen(false)} />`}
     ${scan && html`<${Scanner} onResult=${onScanned} onClose=${()=>setScan(false)} />`}
     ${edit && html`<${Editor} key=${edit.id||"new"+scanCount} initial=${edit} scanCount=${scanCount} onClose=${()=>setEdit(null)}
       onSave=${it=>{ vt(()=>put(it)); flash(`${it.name} rangé · ${it.location}`); }} onDelete=${it=>remove(it)} />`}
